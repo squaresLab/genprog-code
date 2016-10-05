@@ -291,8 +291,17 @@ let test_fitness generation (rep : ('a,'b) Rep.representation) =
    * 1 negative test (worth 10 points). 10:5 == 2:1. *)
   if !single_fitness then begin
     let res, real_value = rep#test_case (Single_Fitness) in
-      debug ~force_gui:true "\t%3g %s\n" real_value.(0) (rep#name ());
-      rep#set_fitness real_value.(0);
+    let values, stddevs = col_mean_stddev real_value in
+    let n = float_of_int (llen real_value) in
+    let b = Buffer.create 255 in
+      Array.iteri (fun i v ->
+        Printf.bprintf b "%g" v ;
+        if (classify_float stddevs.(i)) != FP_nan then
+          Printf.bprintf b " +/- %g" (1.96 *. stddevs.(i) /. n) ;
+        Printf.bprintf b " "
+      ) values ;
+      debug ~force_gui:true "\t%s%s\n" (Buffer.contents b) (rep#name ()) ;
+      rep#set_fitness values.(0);
       rep#cleanup(); res
   end else begin
     let fac = 

@@ -68,26 +68,32 @@ let _ =
    re-evaluating the variant's fitness, but is noticeably slow during replay.
    So we create our own cache here, using the rep name as a key.
 
-   NOTE: this asusmes that name1 == name2 implies fitness1 == fitness2.
+   NOTE: this assumes that name1 == name2 implies fitness1 == fitness2.
    *)
 let yet_another_fitness_cache = Hashtbl.create 255
 
-let evaluate (rep : ('a,'b) representation) = 
-  if Hashtbl.mem yet_another_fitness_cache (rep#name ()) then
+let evaluate ?(force=false) (rep : ('a,'b) representation) = 
+  if not force && Hashtbl.mem yet_another_fitness_cache (rep#name ()) then
     Hashtbl.find yet_another_fitness_cache (rep#name ())
   else begin
     let _, values = rep#test_case (Single_Fitness) in 
     rep#cleanup () ;
-    let values =
-      if Array.length values < !num_objectives then begin
-        if !minimize then 
-          Array.make !num_objectives infinity 
-        else 
-          Array.make !num_objectives neg_infinity 
-      end else values 
+
+    let all_values_full =
+      lfoldl (fun b vs -> b && (Array.length vs) == !num_objectives) true values
     in
-    Hashtbl.add yet_another_fitness_cache (rep#name ()) values;
-    values
+    let avgs =
+      if all_values_full then
+        Array.of_list (lfoldl (fun avgs i ->
+          mean (lfoldl (fun xs value -> value.(i) :: xs) [] values) :: avgs
+        ) [] (lrev (0--(!num_objectives-1))))
+      else if !minimize then 
+        Array.make !num_objectives infinity 
+      else 
+        Array.make !num_objectives neg_infinity 
+    in
+    Hashtbl.replace yet_another_fitness_cache (rep#name ()) avgs;
+    avgs
   end
 
 let is_pessimal arr = 
@@ -205,7 +211,7 @@ and ngsa_ii_internal
 
     let _ =
       List.iter (fun p ->
-        let p_values = evaluate p in 
+        let p_values = evaluate ~force:true p in 
           debug "\t" ;
           Array.iteri (fun m fval ->
             adjust_f_max m fval ; 

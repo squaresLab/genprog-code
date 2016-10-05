@@ -666,6 +666,47 @@ let steady_state_ga (original : ('a,'b) Rep.representation) incoming_pop =
     genetic_algorithm_template run_ga original incoming_pop ;
     cleanup ()
 
+(** {b gasga } is parametric with respect to a number of choices (e.g.,
+    population size, selection method, fitness function, fault localization,
+    many of which are set at the command line or at the representation level.
+    May exit early if exceptions are thrown in fitness evalution ([Max_Evals])
+    or a repair is found [Found_Repair].
+
+    Implements a Greedy Average Sample GA (GASGA):
+
+    Steven Prestwich, S. Armagan Tarim, Roberto Rossi, and Brahim Hnich. 2008.
+    A Steady-State Genetic Algorithm with Resampling for Noisy Inventory
+    Control. In Parallel Problem Solving from Nature.
+
+    @param original original variant
+    @param incoming_pop incoming population, possibly empty
+    @raise Found_Repair if a repair is found
+    @raise Max_evals if the maximum fitness evaluation count is set and then reached *)
+let gasga (original : ('a,'b) Rep.representation) incoming_pop =
+  let ejection_fold ((b : ('a,'b) Rep.representation),
+                     (w : ('a,'b) Rep.representation),
+                     pop)
+                    (rep : ('a,'b) Rep.representation) =
+    let b' =
+      if ((rep#num_evals ()) >= !num_fitness_samples)
+          || (get_opt (b#fitness())) >= (get_opt (rep#fitness())) then b
+      else rep
+    in
+      if (get_opt (w#fitness())) <= (get_opt (rep#fitness())) then
+        b', w, rep::pop
+      else
+        b', rep, w::pop
+  in
+  let rec run_ga (pop : ('a,'b) GPPopulation.t) original =
+    let parents = GPPopulation.selection pop 2 in
+    let child = mutate (List.hd (GPPopulation.crossover parents original)) in
+    let _ = calculate_fitness 0 original child in
+    let best, worst, pop = lfoldl ejection_fold (child, child, []) pop in
+    let _ = calculate_fitness 0 original best in
+      run_ga pop original
+  in
+    genetic_algorithm_template run_ga original incoming_pop
+
 (***********************************************************************)
 (** constructs a representation out of the genome as specified at the command
     line and tests to first failure.  This assumes that the oracle genome

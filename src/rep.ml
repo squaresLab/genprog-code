@@ -303,6 +303,9 @@ class type ['gene,'code] representation = object('self_type)
   *)
   method compile : string -> string -> bool 
 
+  (** returns the number of tests run on this variant, including duplicates *)
+  method num_evals : unit -> int
+
   (** public interface for running a single test case.
 
       @param t test case to run
@@ -312,14 +315,14 @@ class type ['gene,'code] representation = object('self_type)
       may have more than one entry if the search is multiobjective. fitness
       values are usually 1.0 or 0.0 but may be arbitrary when [single_fitness]
       is used. *)
-  method test_case : test -> bool * (float array) 
+  method test_case : test -> bool * (float array list) 
 
   (** as [test_case], but for several test cases, run in parallel (specified by
       --fitness-in-parallel exceeding 1)
 
       @param tests list of tests to run in parallel
       @return as [test_case], but many answers, one for each test run *)
-  method test_cases : test list -> ((bool * float array) list)
+  method test_cases : test list -> ((bool * float array list) list)
 
   (** @return the metrics collected from running [test] *)
   method test_metrics : test -> test_metrics
@@ -528,6 +531,7 @@ let port = ref 808
 let no_test_cache = ref false
 let name_in_test_cache = ref false
 let no_rep_cache = ref false 
+let num_fitness_samples = ref 1
 let allow_coverage_fail = ref false 
 let coverage_per_test = ref false 
 let coverage_per_test_warning_printed = ref false 
@@ -659,6 +663,9 @@ let _ =
       "--rep-cache", Arg.Set_string rep_cache_file, 
       "X rep cache file.  Default: base_name.cache.";
 
+      "--num-fitness-samples", Arg.Set_int num_fitness_samples,
+      "X max number of times to resample a variant's fitness. Default: 1";
+
       "--skip-tests", Arg.Set_string skipped_tests,
       "X assume test cases X (concat all names) pass" ;
 
@@ -724,13 +731,18 @@ let add_nht_name_key_string qbuf digest test =
   () 
 
 let parse_result_from_string str = 
-  let parts = Str.split comma_regexp str in 
+  let parts = Str.split (Str.regexp ";") str in
     match parts with
-    | b :: rest -> 
-      let b = b = "true" in 
-      let rest = lmap my_float_of_string rest in 
-        Some(b, (Array.of_list rest))
-    | _ -> None 
+    | b :: rest ->
+      let b = b = "true" in
+      let rest =
+        lmap (fun s ->
+          let fs = Str.split comma_regexp s in
+            Array.of_list (lmap my_float_of_string fs)
+        ) rest
+      in
+        Some(b, rest)
+    | _ -> None
 
 let nht_cache_query digest test = 
   match nht_connection () with
@@ -759,12 +771,15 @@ let nht_cache_query digest test =
         res  
     ) () 
 
-let add_nht_result_to_buffer qbuf (result : (bool * (float array))) = 
-  let b,fa = result in 
+let add_nht_result_to_buffer qbuf (result : (bool * (float array list))) = 
+  let b,fas = result in 
     Printf.bprintf qbuf "%b" b ; 
-    Array.iter (fun f ->
-      Printf.bprintf qbuf ",%g" f
-    ) fa ; 
+    liter (fun fa ->
+      Printf.bprintf qbuf ";" ;
+      Array.iter (fun f ->
+        Printf.bprintf qbuf ",%g" f
+      ) fa ; 
+    ) fas ;
     Printf.bprintf qbuf "\n" 
 
 let nht_cache_add digest test result = 
@@ -793,7 +808,7 @@ let nht_cache_add digest test result =
     case evaluations.  If the networked hash table is running, uses it as well *)
 (* the string in the test cache is the "canonical" name for this digest *)
 let test_cache = ref 
-  ((Hashtbl.create 255) : ((Digest.t list), (string * (test,(bool*(float array))) Hashtbl.t)) Hashtbl.t)
+  ((Hashtbl.create 255) : ((Digest.t list), (string * (test,(bool*float array list)) Hashtbl.t)) Hashtbl.t)
 let test_cache_query digest test = 
   if Hashtbl.mem !test_cache digest then begin
     let second_ht = match (Hashtbl.find !test_cache digest) with _, second_ht -> second_ht in
@@ -808,13 +823,16 @@ let test_cache_add digest name test result =
       match (Hashtbl.find !test_cache digest) with n, second_ht -> n, second_ht 
     with _ -> name, Hashtbl.create 7 
   in
-    Hashtbl.replace second_ht test result ;
+  let success0, fitness0 = try Hashtbl.find second_ht test with _ -> true, [] in
+  let success1, fitness1 = result in
+  let value = (success0 && success1), (fitness1 @ fitness0) in
+    Hashtbl.replace second_ht test value ;
     if !name_in_test_cache then
       Hashtbl.replace !test_cache digest (name, second_ht)
     else
       Hashtbl.replace !test_cache digest ("", second_ht);
-    nht_cache_add digest test result 
-let test_cache_version = 7
+    nht_cache_add digest test value 
+let test_cache_version = 8
 let test_cache_save () = 
   let fout = open_out_bin "repair.cache" in
     Marshal.to_channel fout test_cache_version [] ; 
@@ -873,8 +891,10 @@ let human_readable_cache_save filename =
       Hashtbl.iter (fun test (pass,data) ->
         Printf.fprintf fout "\ttest: %s\n" (test_name test) ;
         Printf.fprintf fout "\t\tpass: %s\n" (if pass then "TRUE" else "FALSE");
-        Printf.fprintf fout "\t\tlength of data: %d\n" (Array.length data);
-        Array.iter (fun datum -> Printf.fprintf fout "\t\t\tdatum: %g\n" datum) data
+        List.iter (fun data' ->
+          Printf.fprintf fout "\t\tlength of data: %d\n" (Array.length data');
+          Array.iter (fun datum -> Printf.fprintf fout "\t\t\tdatum: %g\n" datum) data'
+        ) data
       ) second_ht;
       Printf.fprintf fout "\tend of test data\n"
     ) !test_cache;
@@ -890,10 +910,10 @@ let num_test_evals_ignore_cache () =  !tested
 (**/**)
 let compile_failures = ref 0 
 let test_counter = ref 0 
-exception Test_Result of (bool * (float array))
+exception Test_Result of (bool * (float array list))
 type test_case_preparation_result =
   | Must_Run_Test of (Digest.t list) * string * string * test 
-  | Have_Test_Result of (Digest.t list) * (bool * float array) 
+  | Have_Test_Result of (Digest.t list) * (bool * float array list) 
 
 let add_subdir str = 
   let result = 
@@ -937,6 +957,10 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       checking the cache or recomputing it.  MUST BE RESET (using
       [self#updated()]) after an edit to the individual.  *)
   val mutable fitness = hcreate 10
+
+  (** the number of times any test has been run on this variant (including
+      duplicates *)
+  val mutable eval_count = 0
 
   (** cached file contents from [internal_compute_source_buffers]; avoid
       recomputing/reserializing *)
@@ -1102,44 +1126,29 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
           debug "cachingRepresentation: %s: does not compile\n" sanity_filename ;
           abort "cachingRepresentation: sanity check failed (compilation)\n" 
         end ; 
-        for i = 1 to !pos_tests do
-          let t = Positive i in
-          let name = test_name t in
-          if should_skip_test t then
-            debug "\t%s: skipped\n" name
-          else begin 
-            let r, g = self#internal_test_case sanity_exename sanity_filename 
-              t in
-            debug "\t%s: %b (%s)\n" name r (float_array_to_str g) ;
-            if not r then begin
-              if !skip_failed_sanity_tests then begin
-                debug "\t\t--skip-failed-sanity-tests\n" ; 
-                failed_sanity_tests <- TestSet.add t failed_sanity_tests ;
-                skipped_tests := (!skipped_tests)^","^name
-              end else 
-                abort "cachingRepresentation: sanity check failed (%s)\n" name 
+        let tests =
+          (lmap (fun i -> (Positive i, (fun b -> not b))) (1 -- !pos_tests))
+            @ (lmap (fun i -> (Negative i, (fun b -> b))) (1 -- !neg_tests))
+        in
+          liter (fun (t, failed) ->
+            let name = test_name t in
+            debug "\t%s: " name;
+            if should_skip_test t then
+              debug "skipped\n"
+            else begin 
+              let r, g = self#internal_test_case sanity_exename sanity_filename 
+                t in
+              debug "%b (%s)\n" r (float_array_to_str (col_means g)) ;
+              if failed r then begin
+                if !skip_failed_sanity_tests then begin
+                  debug "\t\t--skip-failed-sanity-tests\n" ; 
+                  failed_sanity_tests <- TestSet.add t failed_sanity_tests ;
+                  skipped_tests := (!skipped_tests)^","^name
+                end else 
+                  abort "cachingRepresentation: sanity check failed (%s)\n" name 
+              end 
             end 
-          end 
-        done ;
-        for i = 1 to !neg_tests do
-          let t = Negative i in
-          let name = test_name t in
-          if should_skip_test t then
-            debug "\t%s: skipped\n" name
-          else begin 
-            let r, g = self#internal_test_case sanity_exename sanity_filename 
-              t in
-            debug "\t%s: %b (%s)\n" name r (float_array_to_str g) ;
-            if r then begin 
-              if !skip_failed_sanity_tests then begin
-                debug "\t\t--skip-failed-sanity-tests\n" ; 
-                failed_sanity_tests <- TestSet.add t failed_sanity_tests ;
-                skipped_tests := (!skipped_tests)^","^name;
-              end else 
-                abort "cachingRepresentation: sanity check failed (%s)\n" name 
-            end 
-          end 
-        done ;
+          ) tests ;
         let time_now = Unix.gettimeofday () in 
 	self#cleanup();
 	self#updated();
@@ -1262,9 +1271,11 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     in
     result
 
+  method num_evals () = eval_count
+
   method test_case test = 
     if should_skip_test test then
-      (true, [|1.0|]) 
+      (true, [ [|1.0|] ])
     else begin 
       let tpr = self#prepare_for_test_case test in
       let digest_list, result = 
@@ -1272,7 +1283,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         | Must_Run_Test(digest_list,exe_name,source_name,test) -> 
           let result = self#internal_test_case exe_name source_name test in
             test_cache_add digest_list (self#name()) test result ;
-            digest_list, result 
+            digest_list, get_opt (test_cache_query digest_list test)
         | Have_Test_Result(digest_list,result) -> 
           digest_list, result 
       in 
@@ -1325,7 +1336,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
                   self#internal_test_case_postprocess status fitness_file in 
                   decr wait_for_count ; 
                   test_cache_add digest_list (self#name()) test result ;
-                  Hashtbl.replace result_ht test (digest_list,result) 
+                  Hashtbl.replace result_ht test
+                    (digest_list, get_opt (test_cache_query digest_list test))
             with e -> 
               wait_for_count := 0 ;
               debug "cachingRep: test_cases: wait: %s\n" (Printexc.to_string e) 
@@ -1340,7 +1352,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
               result 
           with _ -> 
             debug "cachingRep: test_cases: %s assumed failed\n" (test_name test) ;
-            (false, [| 0. |]) 
+            (false, [ [| 0. |] ]) 
         ) tests 
     end 
 
@@ -1481,6 +1493,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       valid *)
   method private updated () = 
     hclear fitness ;
+    eval_count <- 0 ;
     already_compiled := None ;
     already_source_buffers := None ; 
     already_digest := None ; 
@@ -1520,30 +1533,42 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       @return fitness array of fitnesses, floating point numbers
   *)
   method private internal_test_case_postprocess status fitness_file =
-    let real_valued = ref [| 0. |] in 
     let result = match status with 
-      | Unix.WEXITED(0) -> (real_valued := [| 1.0 |]) ; true 
-      | _ -> (real_valued := [| 0.0 |]) ; false
+      | Unix.WEXITED(0) -> true 
+      | _ -> false
     in 
-      (try
-         let str = file_to_string fitness_file in 
-         let parts = Str.split (Str.regexp "[, \t\r\n]+") str in 
-         let values = List.map (fun v ->
-           try 
-             float_of_string v 
-           with _ -> begin 
-             debug "%s: invalid\n%S\nin\n%S" 
-               fitness_file v str ;
-             0.0
-           end
-         ) parts in
-           if values <> [] then 
-             real_valued := Array.of_list values 
-       with _ -> ()) ;
+    let real_valued =
+      if Sys.file_exists fitness_file then
+        lfoldl (fun real_valued str ->
+          let parts = Str.split (Str.regexp "[, \t]+") str in
+          let values = List.map (fun v ->
+            try
+              float_of_string v
+            with _ -> begin
+              debug "%s: invalid\n%S\nin\n%S" fitness_file v str ;
+              0.0
+            end
+          ) parts in
+            if values <> [] then
+              (Array.of_list values) :: real_valued
+            else
+              real_valued
+        ) [] (get_lines fitness_file)
+      else []
+    in
+    let real_valued =
+      if (List.length real_valued) > 0 then 
+        real_valued
+      else if result then
+        [ [| 1.0 |] ]
+      else
+        [ [| 0.0 |] ]
+    in
+      eval_count <- eval_count + (llen real_valued) ;
       (if not !always_keep_source then 
-          (* I'd rather this goes in cleanup() but it's not super-obvious how *)
-          try Unix.unlink fitness_file with _ -> ());
-      result, !real_valued
+        (* I'd rather this goes in cleanup() but it's not super-obvious how *)
+        try Unix.unlink fitness_file with _ -> ());
+      result, real_valued
 
   (** an internal method for the raw running of a test case that does the bare
       bones work: execute the program on the test case. No caching at this
@@ -1597,7 +1622,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         let try_cache () = 
           (* first, maybe we'll get lucky with the persistent cache *) 
           match test_cache_query digest_list test with
-          | Some(x,f) -> raise (Test_Result (x,f))
+          | Some(x,f) when (List.length f) >= !num_fitness_samples ->
+              raise (Test_Result (x,f))
           | _ -> ()
         in 
           try_cache () ; 
@@ -1620,7 +1646,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
                 self#output_source source_name ; 
                 try_cache () ; 
                 if not (self#compile source_name exe_name) then begin
-                  test_cache_add digest_list (self#name()) test (false, [| 0.0 |]) ;
+                  test_cache_add digest_list (self#name()) test (false, [ [| 0.0 |] ]) ;
                   exe_name,source_name,false
                 end else
                   exe_name,source_name,true
@@ -1632,7 +1658,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
             if worked then 
               (* we need to actually run the program on the test input *) 
               Must_Run_Test(digest_list,exe_name,source_name,test) 
-            else ((Have_Test_Result(digest_list, (false, [| 0.0 |] ))))
+            else ((Have_Test_Result(digest_list, (false, [ [| 0.0 |] ]))))
       end with
       | Test_Result(x) -> (* additional bookkeeping information *) 
         Have_Test_Result(digest_list,x) 

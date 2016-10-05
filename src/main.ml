@@ -125,6 +125,10 @@ let process base ext (rep :('a,'b) Rep.representation) =
         if not (GPPopulation.sanity (rep#variable_length)) then 
           abort "Incompatable representation and crossover types, aborting";
         Search.genetic_algorithm rep population
+      | "gasga" ->
+        if not (GPPopulation.sanity (rep#variable_length)) then 
+          abort "Incompatable representation and crossover types, aborting";
+        Search.gasga rep population
       | "ssga" | "steady-state" ->
         if not (GPPopulation.sanity (rep#variable_length)) then 
           abort "Incompatable representation and crossover types, aborting";

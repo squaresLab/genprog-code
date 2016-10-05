@@ -263,6 +263,44 @@ let probability p =
   else if p >= 1.0 then true
   else Random.float 1.0 <= p 
 
+(** the average of a list of values *)
+let mean xs =
+  fst (List.fold_left (fun (m,n) x ->
+    (m +. (x -. m) /. n), (n +. 1.0)
+  ) (0.0, 1.0) xs)
+
+(** the column-wise average of a list of rows of values *)
+let col_means xss =
+  let ncols = List.fold_left (fun n xs -> max n (Array.length xs)) 0 xss in
+  let m = Array.make ncols 0.0 in
+  let _ =
+    List.fold_left (fun n xs ->
+      Array.iteri (fun i x -> m.(i) <- m.(i) +. (x -. m.(i)) /. n) xs ;
+      n +. 1.0
+    ) 1.0 xss
+  in
+    m
+
+(** the column-wise average and standard deviation of a list of rows of values *)
+let col_mean_stddev xss =
+  let ncols = List.fold_left (fun n xs -> max n (Array.length xs)) 0 xss in
+  let m = Array.make ncols 0.0 in
+  let m2 = Array.make ncols 0.0 in
+  let n =
+    List.fold_left (fun n xs ->
+      Array.iteri (fun i x ->
+        let delta = x -. m.(i) in
+          m.(i) <- m.(i) +. delta /. n ;
+          m2.(i) <- m2.(i) +. delta *. (x -. m.(i))
+      ) xs ;
+      n +. 1.0
+    ) 1.0 xss
+  in
+    if n <= 2.0 then
+      m, Array.make ncols nan
+    else
+      m, Array.mapi (fun i v -> sqrt (v /. (n -. 1.0))) m2
+
 (** read an integer from a string with error reporting *) 
 let my_int_of_string str =
   try 
