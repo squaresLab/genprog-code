@@ -89,7 +89,7 @@ class simpleRep = object (self : 'self_type)
           Printf.bprintf buffer "%s\n" line 
         ) line_list 
       ) genome ;
-      [ None, (Buffer.contents buffer) ]
+      [ None, Some(Buffer.contents buffer) ]
 
   method serialize ?out_channel ?global_info (filename : string) =
     let fout = 

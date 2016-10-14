@@ -78,7 +78,7 @@ class llvmRep = object (self : 'self_type)
   (* internal_compute_source_buffers can theoretically overflow the buffer if
      the rep is extremely large *)
   method internal_compute_source_buffers () =
-      [ None, copy !genome ]
+      [ None, Some(copy !genome) ]
 
   method serialize ?out_channel ?global_info (filename : string) =
     let fout =

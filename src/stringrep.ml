@@ -43,7 +43,7 @@
 open Global
 open Rep
 
-let stringRep_version = "2"
+let stringRep_version = "3"
 
 class stringRep = object (self : 'self_type)
   inherit [string edit_history, string] faultlocRepresentation
@@ -51,17 +51,16 @@ class stringRep = object (self : 'self_type)
 
   (**/**)
 
-  (** The collection of strings representing the original program. Maps
-      filenames to an array of strings for that file and the base atom ID of
-      the first string in the file. Thus, atom ID x refers to the string at
-      index (x - base).
+  (** Mapping from filenames to the half-open range of atom IDs in the file.
+      Shared between all copies. *)
+  val ranges = ref StringMap.empty
 
-      Shared between all clones. *)
-  val global_code = ref StringMap.empty
+  (** The atoms for all files. Shared between all copies. *)
+  val atoms = ref (Array.make 0 "")
 
-  (** The ID to assign to the next line inserted into the program. Shared
-      between all clones so that crossover remains moderately meaningful. *)
-  val next_id = ref 1
+  (** Sorted array of the first atom ID in each file for quickly finding the source
+      file, given an atom ID. Shared among all copies. *)
+  val file_boundaries = ref (Array.make 0 0)
 
   (** The genome: a list of edits and the ID of the first inserted line for
       each. Unique to each instance. *)
@@ -72,6 +71,7 @@ class stringRep = object (self : 'self_type)
   (*
   method copy () : 'self_type =
     let super_copy : 'self_type = super#copy () in
+      (* do not copy genome because lists are immutable in OCaml *)
       super_copy
   *)
 
@@ -82,8 +82,9 @@ class stringRep = object (self : 'self_type)
       | None -> open_out_bin filename
     in
       Marshal.to_channel fout (stringRep_version) [] ;
-      Marshal.to_channel fout (!global_code) [] ;
-      Marshal.to_channel fout (!next_id) [] ;
+      Marshal.to_channel fout (!ranges) [] ;
+      Marshal.to_channel fout (!atoms) [] ;
+      Marshal.to_channel fout (!file_boundaries) [] ;
       Marshal.to_channel fout (genome) [] ;
       debug "stringRep: %s: saved\n" filename ;
       super#serialize ~out_channel:fout ?global_info:global_info filename ;
@@ -100,9 +101,10 @@ class stringRep = object (self : 'self_type)
         debug "stringRep: %s has old version\n" filename ;
         failwith "version mismatch"
       end ;
-      global_code := Marshal.from_channel fin ;
-      next_id     := Marshal.from_channel fin ;
-      genome      <- Marshal.from_channel fin ;
+      ranges          := Marshal.from_channel fin ;
+      atoms           := Marshal.from_channel fin ;
+      file_boundaries := Marshal.from_channel fin ;
+      genome          <- Marshal.from_channel fin ;
       debug "stringRep: %s: loaded\n" filename ;
       super#deserialize ~in_channel:fin ?global_info:global_info filename ;
       if in_channel = None then close_in fin
@@ -158,67 +160,82 @@ class stringRep = object (self : 'self_type)
       self#set_genome g
 
   method from_source filename =
-    global_code := StringMap.empty;
-    next_id := 1;
+    ranges := StringMap.empty;
     genome <- [];
+
+    (* include a placeholder "line" at index 0 so we don't have to remap atom
+       IDs into indexes *)
+    let all_lines = ref [ "" ] in
+    let starts = ref [] in
+    let next_id = ref 1 in
     iter_lines filename (fun line ->
       let fname =
         if line.[0] = '/' then line else Filename.concat !prefix line
       in
-      let lines = Array.of_list (get_lines fname) in
-        global_code := StringMap.add line (!next_id, lines) !global_code;
-        next_id := !next_id + (Array.length lines)
-    )
+      let lines = get_lines fname in
+      let last_id = !next_id in
+        next_id := !next_id + (llen lines) ;
+        ranges := StringMap.add line (last_id, !next_id) !ranges ;
+        starts := last_id :: !starts ;
+        all_lines := List.rev_append lines !all_lines ;
+    ) ;
+    atoms := Array.of_list (lrev !all_lines) ;
+    file_boundaries := Array.of_list !starts ;
+    Array.sort compare !file_boundaries
+
+  method private base_for_atom_id x =
+    let rec bin_search lo hi i =
+      if (lo + 1) = hi then
+        !file_boundaries.(lo)
+      else
+        let mid = (lo + hi) lsr 1 in
+          if !file_boundaries.(mid) <= i then
+            bin_search mid hi i
+          else
+            bin_search lo mid i
+    in
+      bin_search 0 (Array.length !file_boundaries) x
 
   method get_atoms () =
-    StringMap.fold (fun _ (base, lines) atoms ->
-      fst (Array.fold_left (fun (atoms, i) _ ->
-        AtomSet.add i atoms, i+1
-      ) (atoms, base) lines)
-    ) !global_code AtomSet.empty
+    let rec add_from i accum =
+      if (Array.length !atoms) <= i then
+        accum
+      else
+        add_from (i + 1) (AtomSet.add i accum)
+    in
+      add_from 1 AtomSet.empty
 
   method atom_id_of_source_line source_file source_line =
-    let check_one_file base lines =
-      if source_line <= 0 || (Array.length lines) < source_line then []
-      else [source_line + base]
+    let check_one_file start stop =
+      if source_line <= 0 || (stop - start) < source_line then []
+      else [source_line + start]
     in
     if source_file = "" then
-      StringMap.fold (fun _ (base, lines) ids ->
-        (check_one_file base lines) @ ids
-      ) !global_code []
+      StringMap.fold (fun _ (start, stop) ids ->
+        (check_one_file start stop) @ ids
+      ) !ranges []
     else
       try
-        let base, lines = StringMap.find source_file !global_code in
-          check_one_file base lines
+        let start, stop = StringMap.find source_file !ranges in
+          check_one_file start stop
       with Not_found -> []
 
   method instrument_fault_localization _ _ _ =
     failwith "stringRep: no fault localization"
 
   method debug_info () =
-    let nlines =
-      StringMap.fold (fun _ (_, lines) sum ->
-        sum + (Array.length lines)
-      ) !global_code 0
-    in
+    let nlines = Array.length !atoms - 1 in
       debug "stringRep: %d lines\n" nlines
 
   method get i =
-    let line =
-      StringMap.fold (fun _ (base, lines) line ->
-        if base <= i && i < base + (Array.length lines) then
-          Some( lines.( i - base ) )
-        else
-          line
-      ) !global_code None
-    in
-      match line with
-      | Some(line) -> line
-      | None -> failwith ("invalid atom ID: "^(string_of_int i))
+    if (1 <= i) && (i < (Array.length !atoms)) then
+    	(!atoms).(i)
+    else
+      failwith ("invalid atom ID: "^(string_of_int i))
 
   method reduce_fix_space () =
     super#reduce_fix_space ();
-    let fixes = Hashtbl.create 11 in
+    let fixes = Hashtbl.create ((llen !fix_localization) lsr 1) in
       liter (fun (atom_id, weight) ->
         let line = self#get atom_id in
         let oldw = try Hashtbl.find fixes line with Not_found -> 0. in
@@ -234,6 +251,72 @@ class stringRep = object (self : 'self_type)
             false
       ) !fix_localization
 
+  method available_mutations x = 
+    let compute_available _ =
+      lfilt
+        (fun (mutation,prob) ->
+          match mutation with
+            Delete_mut -> true
+          | Append_mut -> (self#append_source_gen x ()) <> None
+          | Swap_mut -> (self#swap_source_gen x ()) <> None
+          | Replace_mut -> (self#replace_source_gen x ()) <> None
+          | Template_mut(s) -> (llen (self#template_available_mutations s x)) > 0
+          | _ -> false
+        ) !mutations
+    in
+      (* Cannot cache available mutations if nested mutations are enabled; the
+         set of applicable sources may change based on previous mutations. *)
+      if !do_nested then compute_available ()
+      else ht_find mutation_cache x compute_available
+
+  method private weight_set_of_generator gen =
+    let rec collect xs =
+      match gen () with
+      | Some(x) -> collect (WeightSet.add x xs)
+      | None -> xs
+    in
+      collect WeightSet.empty
+
+  method append_sources x = 
+    self#weight_set_of_generator (self#append_source_gen x)
+
+  method private append_source_gen x =
+    let pending = ref !fix_localization in
+    let gen () =
+      match !pending with
+      | (i,w)::rest -> pending := rest ; Some(i,w)
+      | [] -> None
+    in
+      gen
+
+  method swap_sources x = 
+    self#weight_set_of_generator (self#swap_source_gen x)
+
+  method private swap_source_gen x =
+    let pending = ref !fault_localization in
+    let rec gen () =
+      match !pending with
+      | (i,w)::rest ->
+        pending := rest ;
+        if i <> x then Some(i,w) else gen ()
+      | [] -> None
+    in
+      gen
+
+  method replace_sources x =
+    self#weight_set_of_generator (self#replace_source_gen x)
+
+  method private replace_source_gen x =
+    let pending = ref !fix_localization in
+    let rec gen () =
+      match !pending with
+      | (i,w)::rest ->
+        pending := rest ;
+        if i <> x then Some(i,w) else gen ()
+      | [] -> None
+    in
+      gen
+
   method internal_compute_source_buffers () =
     (* The following algorithm is based on the following assumptions:
        1) Each line in the program has a unique ID. When new lines are inserted
@@ -245,7 +328,8 @@ class stringRep = object (self : 'self_type)
     (* Create a hashtable of all the edits to apply to each line. Insert the
        edits in reverse order so that the earliest edit will be at the top of
        the stack associated with each id. *)
-    let edits = Hashtbl.create 11 in
+    let edits = Hashtbl.create (llen genome) in
+    let files = Hashtbl.create (Array.length !file_boundaries) in
       liter (fun h ->
         let ts, es =
           match h with
@@ -264,6 +348,10 @@ class stringRep = object (self : 'self_type)
             [dst], [fun line -> [ 0, self#get src ]]
           | _ -> [], []
         in
+          List.iter (fun t ->
+            if t <> 0 then
+              Hashtbl.replace files (self#base_for_atom_id t) ()
+          ) ts ;
           List.iter2 (fun t e -> if t <> 0 then Hashtbl.add edits t e) ts es
       ) (lrev genome) ;
 
@@ -286,13 +374,22 @@ class stringRep = object (self : 'self_type)
       in
 
       Stats2.time "build files" (fun () ->
-      StringMap.fold (fun fname (base, lines) output_list ->
-        (* Create a stack of identified lines from the original program. *)
-        let lines = Array.to_list (Array.mapi (fun i l -> (i+base,l)) lines) in
+      StringMap.fold (fun fname (start, stop) output_list ->
+        if Hashtbl.mem files start then begin
+          (* Create a stack of identified lines from the original program. *)
+          let rec get_lines i lines =
+            if i < start then
+              lines
+            else
+              get_lines (i-1) ((i, !atoms.(i))::lines)
+          in
+          let lines = get_lines (stop-1) [] in
 
-        let body = add_line (Buffer.create 1024) lines in
-          (Some(fname), Buffer.contents body) :: output_list
-      ) !global_code []
+          let body = add_line (Buffer.create 1024) lines in
+            (Some(fname), Some(Buffer.contents body)) :: output_list
+        end else
+          (Some(fname), None) :: output_list
+      ) !ranges []
       )()
 end
 

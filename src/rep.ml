@@ -810,31 +810,25 @@ let nht_cache_add digest test result =
 let test_cache = ref 
   ((Hashtbl.create 255) : ((Digest.t list), (string * (test,(bool*float array list)) Hashtbl.t)) Hashtbl.t)
 let test_cache_query digest test = 
-  if Hashtbl.mem !test_cache digest then begin
-    let second_ht = match (Hashtbl.find !test_cache digest) with _, second_ht -> second_ht in
-      try
-        let res = Hashtbl.find second_ht test in
-          Stats2.time "test_cache hit" (fun () -> Some(res)) () 
-      with _ -> nht_cache_query digest test  
-  end else nht_cache_query digest test  
+  try
+    let second_ht = snd (Hashtbl.find !test_cache digest) in
+    let res = Hashtbl.find second_ht test in
+      Stats2.time "test_cache hit" (fun () -> Some(res)) ()
+  with Not_found ->
+    nht_cache_query digest test
 let test_cache_add digest name test result =
   let name, second_ht = 
-    try
-      match (Hashtbl.find !test_cache digest) with n, second_ht -> n, second_ht 
-    with _ -> name, Hashtbl.create 7 
+    try Hashtbl.find !test_cache digest with _ -> name, Hashtbl.create 7 
   in
   let success0, fitness0 = try Hashtbl.find second_ht test with _ -> true, [] in
   let success1, fitness1 = result in
   let fitness = fitness1 @ fitness0 in
   let fitness =
-    let all_zero_fitness =
-      List.fold_left (fun b xs ->
-        b || (Array.fold_left (fun b x -> b && x == 0.0) true xs)
-      ) false fitness
-    in
-    if all_zero_fitness then
+    let all_zeros = Array.fold_left (fun b x -> b && x = 0.0) true in
+    let any pred = List.fold_left (fun b x -> b || pred x) false in
+    if any all_zeros fitness then begin
       List.map (fun xs -> Array.make (Array.length xs) 0.0) fitness
-    else
+    end else
       fitness
   in
   let value = (success0 && success1), fitness in
@@ -1007,7 +1001,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
      Some(Individual_Name).  This should only be called once per individual per
      update; the answer is cached.  *)
   method virtual internal_compute_source_buffers : 
-      unit -> (((string option) * string) list)
+      unit -> (((string option) * (string option)) list)
 
 
   (***********************************)
@@ -1172,7 +1166,10 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
   method output_source source_name = 
     let sbl = self#compute_source_buffers () in 
       (match sbl with
-      | [(None,source_string)] ->
+      | [(None,None)] ->
+        ignore (abort "ERROR: rep: output_source: single file with default "^
+                 " contents not supported yet\n")
+      | [(None,Some(source_string))] ->
         let fout = open_out source_name in
           output_string fout source_string ;
           close_out fout ;
@@ -1192,11 +1189,15 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
           let sources =
             lfoldl (fun sources (source_name,source_string) ->
               let full_output_name = Filename.concat source_dir source_name in
+              let full_source_name = Filename.concat !prefix source_name in
                 ensure_directories_exist full_output_name ; 
-                let fout = open_out full_output_name in
-                  output_string fout source_string ;
-                  close_out fout ;
-                  full_output_name :: sources
+                (match source_string with
+                  | Some(s) ->
+                    let fout = open_out full_output_name in
+                      output_string fout s ;
+                      close_out fout
+                  | None -> Unix.link full_source_name full_output_name) ;
+                full_output_name :: sources
             ) [] many_files
           in
             already_sourced := Some(lrev sources)
@@ -1495,8 +1496,13 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     | Some(digest_list) -> digest_list 
     | None -> begin
       let source_buffers = self#compute_source_buffers () in 
-      let digest_list = List.map (fun (fname,str) -> 
-        Digest.string str) source_buffers in
+      let digest_list =
+        List.map (function
+          | (_,Some(str)) -> Digest.string str
+          | (Some(fname),_) -> Digest.string fname
+          | (None,None) -> Digest.string ""
+        ) source_buffers
+      in
         already_digest := Some(digest_list) ;
         digest_list 
     end 

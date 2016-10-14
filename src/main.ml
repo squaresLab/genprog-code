@@ -241,6 +241,7 @@ let main () = begin
   end ; 
 
   (* Bookkeeping information to print out whenever we're done ... *) 
+  Sys.catch_break true ;
   at_exit (fun () -> 
     let tc = (Rep.num_test_evals_ignore_cache ()) in 
     debug "\nVariant Test Case Queries: %d\n" tc ;

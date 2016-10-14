@@ -3151,9 +3151,9 @@ class patchCilRep = object (self : 'self_type)
       )()
 
   (**/**)
-  (* computes the source buffers for this variant.  @return (string * string)
-      list pair of filename and string source buffer corresponding to that
-      file *)
+  (* computes the source buffers for this variant.
+      @return (string option * string option) list pair of filename and string
+      source buffer corresponding to that file *)
   method private internal_compute_source_buffers () = 
     let make_name n = if !use_subdirs then Some(n) else None in
     let output_list = 
@@ -3172,13 +3172,13 @@ class patchCilRep = object (self : 'self_type)
             StringMap.fold
               (fun (fname:string) (cil_file:Cil.file) output_list ->
                 let source_string = output_cil_file_to_string cil_file in
-                  (make_name fname,source_string) :: output_list 
+                  (make_name fname,Some(source_string)) :: output_list 
               ) new_file_map [] 
       | None ->
         StringMap.fold
           (fun (fname:string) (cil_file:Cil.file) output_list ->
             let source_string = output_cil_file_to_string cil_file in
-            (make_name fname,source_string) :: output_list 
+            (make_name fname,Some(source_string)) :: output_list 
           ) (self#get_current_files ()) [] 
     in
       assert((llen output_list) > 0);
@@ -3341,7 +3341,7 @@ class astCilRep = object(self)
     let make_name n = if !use_subdirs then Some(n) else None in
       StringMap.iter (fun (fname:string) (cil_file:Cil.file) ->
         let source_string = output_cil_file_to_string cil_file in
-          output_list := (make_name fname,source_string) :: !output_list 
+          output_list := (make_name fname,Some(source_string)) :: !output_list 
       ) (self#get_current_files()) ; 
       assert((llen !output_list) > 0);
       !output_list

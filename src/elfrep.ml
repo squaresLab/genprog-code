@@ -111,7 +111,7 @@ class elfRep = object (self : 'self_type)
       self#output_source tmp_file ;
       let str = file_to_string tmp_file in
         (try Unix.unlink tmp_file with _ -> ());
-        [ None, str ]
+        [ None, Some(str) ]
           
   method serialize ?out_channel ?global_info (filename : string) =
     let fout =
