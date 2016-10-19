@@ -731,14 +731,16 @@ let add_nht_name_key_string qbuf digest test =
   () 
 
 let parse_result_from_string str = 
-  let parts = Str.split (Str.regexp ";") str in
+  let parts = Str.split (Str.regexp ";;") str in
     match parts with
     | b :: rest ->
       let b = b = "true" in
       let rest =
         lmap (fun s ->
-          let fs = Str.split comma_regexp s in
-            Array.of_list (lmap my_float_of_string fs)
+          lmap (fun s ->
+            let fs = Str.split comma_regexp s in
+              Array.of_list (lmap my_float_of_string fs)
+          ) (Str.split (Str.regexp ";") s)
         ) rest
       in
         Some(b, rest)
@@ -771,15 +773,20 @@ let nht_cache_query digest test =
         res  
     ) () 
 
-let add_nht_result_to_buffer qbuf (result : (bool * (float array list))) = 
-  let b,fas = result in 
+let add_nht_result_to_buffer qbuf (result : (bool * (float array list list))) = 
+  let b,fass = result in 
     Printf.bprintf qbuf "%b" b ; 
-    liter (fun fa ->
+    liter (fun fas ->
       Printf.bprintf qbuf ";" ;
-      Array.iter (fun f ->
-        Printf.bprintf qbuf ",%g" f
-      ) fa ; 
-    ) fas ;
+      liter (fun fa ->
+        Printf.bprintf qbuf ";" ;
+        Array.iteri (fun i f ->
+          if i > 0 then
+            Printf.bprintf qbuf "," ;
+          Printf.bprintf qbuf "%g" f
+        ) fa ; 
+      ) fas ;
+    ) fass ;
     Printf.bprintf qbuf "\n" 
 
 let nht_cache_add digest test result = 
@@ -806,9 +813,26 @@ let nht_cache_add digest test result =
 
 (** test_cache, test_cache_query, etc, implement persistent caching for test
     case evaluations.  If the networked hash table is running, uses it as well *)
-(* the string in the test cache is the "canonical" name for this digest *)
+(*
+ * The test cache is a two-level hashtable. The first level maps from a list of
+ * digests (representing the source for this variant) to a pair containing the
+ * "canonical" name for the variant (i.e., the first one added to the cache) and 
+ * the second level table. The second level table maps from the test to a pair
+ * containing a boolean indicating success and a list of fitness results. The
+ * list of fitness results is stored as a list of lists of arrays of floats as
+ * follows: the outer list contains one entry for each time the test was run,
+ * which may be more than once, depending on !num_fitness_samples. The inner
+ * list contains one array for each line of the fitness file, while each array
+ * contains a float for each value on one line of the fitness file.
+ *
+ * FIXME: If any line consists of only the special value zero, all fitness
+ * values are reset to zero. This is intended to capture non-deterministic
+ * failures of the single fitness function. This would probably be better
+ * handled using the boolean flag instead of throwing away all the other fitness
+ * values.
+ *)
 let test_cache = ref 
-  ((Hashtbl.create 255) : ((Digest.t list), (string * (test,(bool*float array list)) Hashtbl.t)) Hashtbl.t)
+  ((Hashtbl.create 255) : ((Digest.t list), (string * (test,(bool*float array list list)) Hashtbl.t)) Hashtbl.t)
 let test_cache_query digest test = 
   try
     let second_ht = snd (Hashtbl.find !test_cache digest) in
@@ -822,12 +846,12 @@ let test_cache_add digest name test result =
   in
   let success0, fitness0 = try Hashtbl.find second_ht test with _ -> true, [] in
   let success1, fitness1 = result in
-  let fitness = fitness1 @ fitness0 in
+  let fitness = fitness1 :: fitness0 in
   let fitness =
     let all_zeros = Array.fold_left (fun b x -> b && x = 0.0) true in
     let any pred = List.fold_left (fun b x -> b || pred x) false in
-    if any all_zeros fitness then begin
-      List.map (fun xs -> Array.make (Array.length xs) 0.0) fitness
+    if any (any all_zeros) fitness then begin
+      List.map (List.map (fun xs -> Array.make (Array.length xs) 0.0)) fitness
     end else
       fitness
   in
@@ -838,7 +862,7 @@ let test_cache_add digest name test result =
     else
       Hashtbl.replace !test_cache digest ("", second_ht);
     nht_cache_add digest test value 
-let test_cache_version = 8
+let test_cache_version = 9
 let test_cache_save () = 
   let fout = open_out_bin "repair.cache" in
     Marshal.to_channel fout test_cache_version [] ; 
@@ -900,7 +924,7 @@ let human_readable_cache_save filename =
         List.iter (fun data' ->
           Printf.fprintf fout "\t\tlength of data: %d\n" (Array.length data');
           Array.iter (fun datum -> Printf.fprintf fout "\t\t\tdatum: %g\n" datum) data'
-        ) data
+        ) (List.flatten data)
       ) second_ht;
       Printf.fprintf fout "\tend of test data\n"
     ) !test_cache;
@@ -940,7 +964,7 @@ let add_subdir str =
   in
     Filename.concat (Unix.getcwd ()) result
 (**/**)
-let cachingRep_version = "2"
+let cachingRep_version = "3"
 
 let global_source_cache = ref None
 
@@ -964,9 +988,9 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       [self#updated()]) after an edit to the individual.  *)
   val mutable fitness = hcreate 10
 
-  (** the number of times any test has been run on this variant (including
+  (** the number of times each test has been run on this variant (including
       duplicates *)
-  val mutable eval_count = 0
+  val mutable eval_count = (TestMap.empty, 0)
 
   (** cached file contents from [internal_compute_source_buffers]; avoid
       recomputing/reserializing *)
@@ -1284,7 +1308,34 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     in
     result
 
-  method num_evals () = eval_count
+  method num_evals () = snd eval_count
+
+  (** Checks the test cache for this variant and the given test. If next is
+      false, attempts to return the first N cached fitness values where N is the
+      number of evaluations of this test. If next is true, attempts to retrieve
+      the first N+1 cached fitness value. This second behavior allows the cache
+      to be replayed properly: the first call retrieves only the first value,
+      the second call gets the first two value, etc.
+   *)
+  method private internal_check_test_cache ?(next=false) test =
+    let extend = if next then (fun x y -> x <= y) else (fun x y -> x < y) in
+    let numtests = try TestMap.find test (fst eval_count) with _ -> 0 in
+      match test_cache_query (self#compute_digest()) test with
+      | Some(x, fss) ->
+        let n, fss =
+          lfoldl (fun (n,fs) fs' ->
+            if extend n numtests then
+              n + (llen fs'), List.rev_append fs' fs
+            else
+              n, fs
+          ) (0,[]) (lrev fss)
+        in
+          if numtests < n then begin
+            let map, total = eval_count in
+              eval_count <- TestMap.add test n map, total + n - numtests
+          end ;
+          Some(x, fss)
+      | None -> None
 
   method test_case test = 
     if should_skip_test test then
@@ -1296,7 +1347,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         | Must_Run_Test(digest_list,exe_name,source_name,test) -> 
           let result = self#internal_test_case exe_name source_name test in
             test_cache_add digest_list (self#name()) test result ;
-            digest_list, get_opt (test_cache_query digest_list test)
+            digest_list, (get_opt (self#internal_check_test_cache test))
         | Have_Test_Result(digest_list,result) -> 
           digest_list, result 
       in 
@@ -1333,7 +1384,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
               popen ~stdout:(UseDescr(dev_null)) ~stderr:(UseDescr(dev_null))
                 "/bin/bash" ["-c"; cmd]) () in
               Hashtbl.replace 
-                pid_to_test_ht p.pid (test,fitness_file,digest) 
+                pid_to_test_ht p.pid (test,(Unix.gettimeofday()),fitness_file,digest) 
 
           | Have_Test_Result(digest,result) -> 
             Hashtbl.replace result_ht test (digest,result)
@@ -1343,14 +1394,15 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
             try 
               match Unix.wait () with
               | pid, status -> 
-                let test, fitness_file, digest_list = 
+                let test, start, fitness_file, digest_list = 
                   Hashtbl.find pid_to_test_ht pid in 
+                let runtime = (Unix.gettimeofday()) -. start in
                 let result = 
-                  self#internal_test_case_postprocess status fitness_file in 
+                  self#internal_test_case_postprocess test runtime status fitness_file in 
                   decr wait_for_count ; 
                   test_cache_add digest_list (self#name()) test result ;
                   Hashtbl.replace result_ht test
-                    (digest_list, get_opt (test_cache_query digest_list test))
+                    (digest_list, get_opt (self#internal_check_test_cache test))
             with e -> 
               wait_for_count := 0 ;
               debug "cachingRep: test_cases: wait: %s\n" (Printexc.to_string e) 
@@ -1511,7 +1563,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       valid *)
   method private updated () = 
     hclear fitness ;
-    eval_count <- 0 ;
+    eval_count <- TestMap.empty, 0 ;
     already_compiled := None ;
     already_source_buffers := None ; 
     already_digest := None ; 
@@ -1546,11 +1598,13 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       [fitness_file] is unreadable, returns 0.0 for fitness and merely print a
       warning
 
+      @param test the test that produced these results
+      @param runtime the duration of the test
       @param status process status for the executed test case
       @param fitness_file on-disk file to which the test script may have written
       @return fitness array of fitnesses, floating point numbers
   *)
-  method private internal_test_case_postprocess status fitness_file =
+  method private internal_test_case_postprocess test runtime status fitness_file =
     let result = match status with 
       | Unix.WEXITED(0) -> true 
       | _ -> false
@@ -1582,10 +1636,27 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       else
         [ [| 0.0 |] ]
     in
-      eval_count <- eval_count + (llen real_valued) ;
       (if not !always_keep_source then 
         (* I'd rather this goes in cleanup() but it's not super-obvious how *)
         try Unix.unlink fitness_file with _ -> ());
+
+      (* update counts of passing/failing tests for test prioritization *)
+      let old = self#test_metrics test in
+      let count = old.pass_count +. old.fail_count in
+      let cost = old.cost +. (runtime -. old.cost) /. (count +. 1.) in
+        if result then
+          Hashtbl.replace test_metrics_table test
+            {old with pass_count = old.pass_count +. 1.; cost = cost}
+        else
+          Hashtbl.replace test_metrics_table test
+            {old with fail_count = old.fail_count +. 1.; cost = cost} ;
+
+      (* update eval_count to reflect new results *)
+      let map, total = eval_count in
+      let old_count = try TestMap.find test map with _ -> 0 in
+      let delta = llen real_valued in
+        eval_count <- TestMap.add test (old_count + delta) map, total + delta ;
+
       result, real_valued
 
   (** an internal method for the raw running of a test case that does the bare
@@ -1605,24 +1676,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     (* Run our single test. *) 
     let start = Unix.gettimeofday () in
     let status = Stats2.time "test" system cmd in
-    let passed, vals =
-      self#internal_test_case_postprocess status (fitness_file: string) in
     let runtime = (Unix.gettimeofday ()) -. start in
-
-    let old = self#test_metrics test in
-    let count = old.pass_count +. old.fail_count in
-    let cost =
-      if count = 0.
-        then runtime
-        else old.cost +. (runtime -. old.cost) /. count
-    in
-      if passed then
-        Hashtbl.replace test_metrics_table test
-          {old with pass_count = old.pass_count +. 1.; cost = cost}
-      else
-        Hashtbl.replace test_metrics_table test
-          {old with fail_count = old.fail_count +. 1.; cost = cost} ;
-      passed, vals
+      self#internal_test_case_postprocess test runtime status fitness_file
 
   method test_metrics test =
     ht_find test_metrics_table test (fun () ->
@@ -1637,15 +1692,21 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
   method private prepare_for_test_case test : test_case_preparation_result = 
     let digest_list = self#compute_digest () in 
       try begin
-        let try_cache () = 
-          (* first, maybe we'll get lucky with the persistent cache *) 
-          match test_cache_query digest_list test with
-          | Some(x,f) when (List.length f) >= !num_fitness_samples ->
-              raise (Test_Result (x,f))
-          | _ -> ()
+        let try_cache next = 
+          let count = try TestMap.find test (fst eval_count) with _ -> 0 in
+            (* first, maybe we've reached the max number of evals *)
+            if !num_fitness_samples <= count then
+              let result = self#internal_check_test_cache test in
+                raise (Test_Result (get_opt result))
+            else
+              (* second, maybe we'll get lucky with the persistent cache *) 
+                match self#internal_check_test_cache ~next test with
+                | Some(x,f) when count < (TestMap.find test (fst eval_count)) ->
+                  raise (Test_Result (x,f))
+                | _ -> ()
         in 
-          try_cache () ; 
-          (* second, maybe we've already compiled it *) 
+          try_cache true ; 
+          (* third, maybe we've already compiled it *) 
           let exe_name, source_name, worked = match !already_compiled with
             | None -> (* never compiled before, so compile it now *) 
               let subdir = add_subdir None in 
@@ -1662,7 +1723,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
                   test_cache_save () ;
                 end ; 
                 self#output_source source_name ; 
-                try_cache () ; 
+                try_cache false ; 
                 if not (self#compile source_name exe_name) then begin
                   test_cache_add digest_list (self#name()) test (false, [ [| 0.0 |] ]) ;
                   exe_name,source_name,false

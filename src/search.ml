@@ -702,7 +702,10 @@ let gasga (original : ('a,'b) Rep.representation) incoming_pop =
     let child = mutate (List.hd (GPPopulation.crossover parents original)) in
     let _ = calculate_fitness 0 original child in
     let best, worst, pop = lfoldl ejection_fold (child, child, []) pop in
-    let _ = calculate_fitness 0 original best in
+      (* if (best == worst), then we are evicting it out of the population, so
+         don't bother reevaluating it *)
+      if best != worst then
+        ignore (calculate_fitness 0 original best) ;
       run_ga pop original
   in
     genetic_algorithm_template run_ga original incoming_pop
