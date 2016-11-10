@@ -49,6 +49,7 @@
 
 open Global
 open Rep
+open Search
 open Population
 
 let minimize = ref false 
@@ -168,7 +169,12 @@ and ngsa_ii_internal
     ?(is_last_generation=false) (original) incoming_pop =
 
   (* Step numbers follow Seshadri's paper *)
-  original#reduce_search_space (fun _ -> true) (not (!Search.promut <= 0));
+  if (not !disable_reduce_search_space) then
+    original#reduce_search_space (fun _ -> true) (not (!Search.promut <= 0));
+  
+  if (not !disable_reduce_fix_space) then
+    original#reduce_fix_space ();
+  
   original#register_mutations 
     [(Delete_mut,!Search.del_prob); (Append_mut,!Search.app_prob); 
      (Swap_mut,!Search.swap_prob); (Replace_mut,!Search.rep_prob)];
