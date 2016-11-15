@@ -93,6 +93,7 @@ BASE_MODULES = \
   elf.cmo \
   stats2.cmo \
   global.cmo \
+  trie.cmo \
   distglobal.cmo \
   cdiff.cmo \
   template.cmo \

@@ -1,6 +1,6 @@
 (*
  *
- * Copyright (c) 2012-2013, 
+ * Copyright (c) 2012-2016, 
  *  Wes Weimer          <weimer@cs.virginia.edu>
  *  Stephanie Forrest   <forrest@cs.unm.edu>
  *  Claire Le Goues     <legoues@cs.virginia.edu>
@@ -336,6 +336,12 @@ let file_to_string (file : string) : string =
         Buffer.contents b 
     with _ -> Buffer.contents b 
 
+let chars_of_string (s : string) : char list =
+  let rec stc i l =
+    if i < 0 then l else stc (i - 1) (s.[i] :: l)
+  in
+  stc (String.length s - 1) []
+      
 (** [string_to_file file contents] writes [contents] to the file named [file] *)
 let string_to_file (file : string) (contents : string) =
   let fout = open_out file in
