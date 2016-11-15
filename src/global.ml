@@ -4,6 +4,8 @@
  *  Wes Weimer          <weimer@cs.virginia.edu>
  *  Stephanie Forrest   <forrest@cs.unm.edu>
  *  Claire Le Goues     <legoues@cs.virginia.edu>
+ *  Jonathan Dorn       <dorn@virginia.edu>
+ *  Jeremy Lacomis      <lacomis@virginia.edu>
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
@@ -102,10 +104,11 @@ type 'a redirect =
 
 (**/**)
 (** Keeps track of how many calls were made to [popen]. We want to force the
-    garbage collector to run every so often, since our process may be using
-    a significant amount of reclaimable memory such that a fork cannot
-    succeed. *)
-let popen_gc_count = ref 0
+    garbage collector to run every so often, since our process may be using a
+    significant amount of reclaimable memory such that a fork cannot
+    succeed. Initialized to -1 so that the garbage collector runs immediately
+    after preprocessing.*)
+let popen_gc_count = ref (-1)
 (**/**)
 
 (** [popen prog args] runs [prog] with the given arguments in parallel with
@@ -159,7 +162,7 @@ let popen ?(stdin=Keep) ?(stdout=Keep) ?(stderr=Keep) cmd args =
     | UseDescr(descr)  -> None, descr
   in
   incr popen_gc_count ;
-  if !popen_gc_count > 1000 then begin
+  if (!popen_gc_count == 0) || (!popen_gc_count > 1000) then begin
     popen_gc_count := 0;
     Gc.compact ();
   end;
