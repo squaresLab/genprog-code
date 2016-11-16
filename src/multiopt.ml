@@ -73,29 +73,40 @@ let _ =
    *)
 let yet_another_fitness_cache = Hashtbl.create 255
 
-let evaluate ?(force=false) (rep : ('a,'b) representation) = 
-  if not force && Hashtbl.mem yet_another_fitness_cache (rep#name ()) then
-    Hashtbl.find yet_another_fitness_cache (rep#name ())
-  else begin
-    let _, values = rep#test_case (Single_Fitness) in 
-    rep#cleanup () ;
+let calculate_fitness (rep : ('a,'b) GPPopulation.individual) =
+  (* FIXME: this function implements Search.calculate_fitness and
+     Fitness.test_fitness inline. Unfortunately, those functions are built
+     around single-float fitness, which doesn't work for us. *)
+  Stats2.time "calculate_fitness" (fun _ ->
+  let evals = Rep.num_test_evals_ignore_cache () in
+    if !max_evals > 0 && evals > !max_evals then
+      raise (Maximum_evals(evals)) ;
+    let _, real_values = rep#test_case (Single_Fitness) in
+    let values, stddevs = col_mean_stddev real_values in
+    let values, stddevs =
+      if Array.length values != !num_objectives then
+        let v = if !minimize then infinity else neg_infinity in
+          Array.make !num_objectives v, Array.make !num_objectives 0.0
+      else
+        values, stddevs
+    in
+    let n = sqrt (float_of_int (llen real_values)) in
+    let b = Buffer.create 255 in
+      Array.iteri (fun i v ->
+        Printf.bprintf b "%g" v ;
+        if (classify_float stddevs.(i)) != FP_nan && stddevs.(i) > 0.0 then
+          Printf.bprintf b " +/- %g" (1.96 *. stddevs.(i) /. n) ;
+        Printf.bprintf b " "
+      ) values ;
+      debug ~force_gui:true "\t%s%s\n" (Buffer.contents b) (rep#name ()) ;
+      rep#set_fitness values.(0);
+      Hashtbl.replace yet_another_fitness_cache (rep#name()) values ;
+      rep#cleanup() ;
+      rep
+  ) ()
 
-    let all_values_full =
-      lfoldl (fun b vs -> b && (Array.length vs) == !num_objectives) true values
-    in
-    let avgs =
-      if all_values_full then
-        Array.of_list (lfoldl (fun avgs i ->
-          mean (lfoldl (fun xs value -> value.(i) :: xs) [] values) :: avgs
-        ) [] (lrev (0--(!num_objectives-1))))
-      else if !minimize then 
-        Array.make !num_objectives infinity 
-      else 
-        Array.make !num_objectives neg_infinity 
-    in
-    Hashtbl.replace yet_another_fitness_cache (rep#name ()) avgs;
-    avgs
-  end
+let evaluate (rep : ('a,'b) representation) = 
+  Hashtbl.find yet_another_fitness_cache (rep#name())
 
 let is_pessimal arr = 
   if !minimize then 
@@ -109,7 +120,7 @@ let dominates (p: ('a, 'b) Rep.representation)
     (q: ('a, 'b) Rep.representation) : bool =
   let p_values = evaluate p in 
   let q_values = evaluate q in 
-    assert(Array.length p_values = Array.length q_values) ; 
+    assert (Array.length p_values = Array.length q_values) ;
     let better = ref 0 in
     let same = ref 0 in
     let worse = ref 0 in 
@@ -132,67 +143,44 @@ let rephash_find_all h x = Hashtbl.find_all h (x#name ())
 let rephash_mem h x = Hashtbl.mem h (x#name ())  
 
 let rec ngsa_ii (original : ('a,'b) Rep.representation) (incoming_pop) : unit =
+    let current =
+      ref (initialize_ga ~get_fitness:calculate_fitness original incoming_pop)
+    in
 
-  debug "multiopt: ngsa_ii begins (%d generations left)\n" !Search.generations;
+      debug "multiopt: ngsa_ii begins (%d generations left)\n" !generations;
 
-  let current = ref incoming_pop in 
-    for gen = 1 to !Search.generations do
-      let _ = 
-        debug "multiopt: ngsa_ii generation %d begins\n" gen 
-      in
-      let is_last_generation = gen = !Search.generations in 
-      let next_generation = 
-        ngsa_ii_internal original !current ~is_last_generation in 
-      let filename = Printf.sprintf "generation-%04d.list" gen in 
-      let _ = 
-        debug "multiopt: printing %s\n" filename 
-      in
-      let fout = open_out filename in 
-        List.iter (fun var ->
-          let names = var#source_name in
-          let rec handle names = 
-            match names with
-            | [] -> ()
-            | [one] -> Printf.fprintf fout "%s\n" one
-            | first :: rest -> 
-              Printf.fprintf fout "%s," first ;
-              handle rest
+        for gen = 1 to !Search.generations do
+          let _ = 
+            debug "multiopt: ngsa_ii generation %d begins\n" gen 
           in
-            handle names ; 
-        ) next_generation ;
-        close_out fout ; 
-        current := next_generation 
-    done ;
-    debug "multiopt: ngsa_ii end\n" 
+          let is_last_generation = gen = !generations in 
+          let next_generation = 
+            ngsa_ii_internal original !current ~is_last_generation in 
+          let filename = Printf.sprintf "generation-%04d.list" gen in 
+          let _ = 
+            debug "multiopt: printing %s\n" filename 
+          in
+          let fout = open_out filename in 
+            List.iter (fun var ->
+              let names = var#source_name in
+              let rec handle names = 
+                match names with
+                | [] -> ()
+                | [one] -> Printf.fprintf fout "%s\n" one
+                | first :: rest -> 
+                  Printf.fprintf fout "%s," first ;
+                  handle rest
+              in
+                handle names ; 
+            ) next_generation ;
+            close_out fout ; 
+            current := next_generation 
+        done ;
+        debug "multiopt: ngsa_ii end\n" 
 
 and ngsa_ii_internal 
-    ?(is_last_generation=false) (original) incoming_pop =
-
+    ?(is_last_generation=false) (original) pop =
   (* Step numbers follow Seshadri's paper *)
-  if (not !disable_reduce_search_space) then
-    original#reduce_search_space (fun _ -> true) (not (!Search.promut <= 0));
-  
-  if (not !disable_reduce_fix_space) then
-    original#reduce_fix_space ();
-  
-  original#register_mutations 
-    [(Delete_mut,!Search.del_prob); (Append_mut,!Search.app_prob); 
-     (Swap_mut,!Search.swap_prob); (Replace_mut,!Search.rep_prob)];
-  (****** 3.1. Population Initialization ******)
-  let pop = 
-    match incoming_pop with
-      [] -> begin
-        debug "multiopt: generating initial population\n" ; 
-        let pop = ref [original#copy ()] in (* our GP population *) 
-          for i = 1 to pred !Population.popsize do
-            (* initialize the population to a bunch of random mutants *) 
-            pop := (Search.mutate original) :: !pop 
-          done ;
-          !pop
-      end
-    | _ -> 
-      (debug "multiopt: using previous population\n" ; incoming_pop)
-  in 
 
   let ngsa_ii_sort pop = begin
     let _ = 
@@ -217,14 +205,11 @@ and ngsa_ii_internal
 
     let _ =
       List.iter (fun p ->
-        let p_values = evaluate ~force:true p in 
-          debug "\t" ;
+        let p_values = evaluate p in 
           Array.iteri (fun m fval ->
             adjust_f_max m fval ; 
             adjust_f_min m fval ; 
-            debug "%3g " fval ;
           ) p_values ;
-          debug "\t%s\n" (p#name ())
       ) pop ; 
       for m = 0 to pred !num_objectives do
         debug "multiopt: %g <= objective %d <= %g\n" 
@@ -382,28 +367,18 @@ and ngsa_ii_internal
   in
 
   (* crossover, mutate *) 
-  let children = ref [] in 
-  let _ = 
-    for j = 1 to !Population.popsize do
-      let parents = GPPopulation.tournament_selection pop 
-        ~compare_func:crowded_compare 2
-      in
-        match parents with
-        | [ one ; two ] ->
-          let kids =  GPPopulation.do_cross original one two in 
-          let kids = List.map (fun kid -> 
-            Search.mutate kid 
-          ) kids in 
-            children := kids @ !children 
-        | _ -> debug "multiopt: wrong number of parents (fatal)\n" 
-    done 
+  let children =
+    let selected = GPPopulation.selection pop !popsize in
+    let crossed = GPPopulation.crossover selected original in
+    let mutated = GPPopulation.map crossed (fun one -> mutate one) in
+    GPPopulation.map mutated calculate_fitness
   in
 
   let _ = 
     debug "multiopt: adding children, sorting\n" 
   in
 
-  let many = pop @ !children in 
+  let many = pop @ children in 
   let crowded_compare, f, distance = ngsa_ii_sort many in 
 
     if is_last_generation then begin 

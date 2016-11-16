@@ -292,7 +292,7 @@ let test_fitness generation (rep : ('a,'b) Rep.representation) =
   if !single_fitness then begin
     let res, real_value = rep#test_case (Single_Fitness) in
     let values, stddevs = col_mean_stddev real_value in
-    let n = float_of_int (llen real_value) in
+    let n = sqrt (float_of_int (llen real_value)) in
     let b = Buffer.create 255 in
       Array.iteri (fun i v ->
         Printf.bprintf b "%g" v ;
