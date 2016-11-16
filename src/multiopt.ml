@@ -77,7 +77,6 @@ let calculate_fitness (rep : ('a,'b) GPPopulation.individual) =
   (* FIXME: this function implements Search.calculate_fitness and
      Fitness.test_fitness inline. Unfortunately, those functions are built
      around single-float fitness, which doesn't work for us. *)
-  Stats2.time "calculate_fitness" (fun _ ->
   let evals = Rep.num_test_evals_ignore_cache () in
     if !max_evals > 0 && evals > !max_evals then
       raise (Maximum_evals(evals)) ;
@@ -103,7 +102,6 @@ let calculate_fitness (rep : ('a,'b) GPPopulation.individual) =
       Hashtbl.replace yet_another_fitness_cache (rep#name()) values ;
       rep#cleanup() ;
       rep
-  ) ()
 
 let evaluate (rep : ('a,'b) representation) = 
   Hashtbl.find yet_another_fitness_cache (rep#name())
@@ -143,12 +141,14 @@ let rephash_find_all h x = Hashtbl.find_all h (x#name ())
 let rephash_mem h x = Hashtbl.mem h (x#name ())  
 
 let rec ngsa_ii (original : ('a,'b) Rep.representation) (incoming_pop) : unit =
+  try begin
     let current =
       ref (initialize_ga ~get_fitness:calculate_fitness original incoming_pop)
     in
 
       debug "multiopt: ngsa_ii begins (%d generations left)\n" !generations;
 
+      try begin
         for gen = 1 to !Search.generations do
           let _ = 
             debug "multiopt: ngsa_ii generation %d begins\n" gen 
@@ -177,6 +177,10 @@ let rec ngsa_ii (original : ('a,'b) Rep.representation) (incoming_pop) : unit =
             current := next_generation 
         done ;
         debug "multiopt: ngsa_ii end\n" 
+      end with Maximum_evals(evals) ->
+        debug "reached maximum evals (%d)\n" evals
+  end with Maximum_evals(evals) ->
+    debug "reached maximum evals (%d) during population initialization\n" evals
 
 and ngsa_ii_internal 
     ?(is_last_generation=false) (original) pop =
