@@ -1,0 +1,89 @@
+{
+  
+
+    "2016-05-02-new-surface-visualization": {
+      "title": "New Surface Visualization",
+      "content"	 : "",
+      "url": "/2016/05/02/New-Surface-Visualization/",
+      "author": "Ahmet Cecen",
+      "categories": ""
+    }
+    ,
+  
+
+    "2016-05-02-new-projector": {
+      "title": "New Projector",
+      "content"	 : "",
+      "url": "/2016/05/02/New-Projector/",
+      "author": "Ahmet Cecen",
+      "categories": ""
+    }
+    ,
+  
+
+    "2016-05-02-new-presentation": {
+      "title": "New Presentation",
+      "content"	 : "      New Presentation        Ahmet Cecen    12 00 AM ,Mon, May 02 2016            F11 to Fullscreen!    Showcasing Presentation Features. This template is ideal for very quickly creating decent presentations when content and simplicity is more important than excessive styling.        Seperate with {{ page.horizontal }} between content for horizontal slides.        Seperate with {{ page.vertical }} between content for vertical slides.        Press ESC for a zoomed out overview of the presentation.        Press B to pause the presentation.        Header 1    Header 2    Header 3        Styling    Bold    Italics    Bold and Italics        Use MathJax for Math.            Lists                  Item 1                    Item 2                    Item                  Links    In-Line    I’m a reference-style link 1    I’m a reference-style link 1        Images    Alt-Click to zoom.            Code    Inline code.        Code Block    import numpy as npdef _set_colors():HighRGB = np.array([26, 152, 80]) / 255.            Quotes          War does not decide who is right, only who is left.            HTML    Now, you CAN write in HTML using this template. If you want to create HTML presentations using this framework head over to reveal.js for reference.  For a power-point like interactive tool for creating presentations with this theme, check slides.com.        Some HTML Functionality    Color and Alignment    This text is centered.    This is a red text with blue and green inline text.        STL            Data Projector                Print    Back  ",
+      "url": "/2016/05/02/New-Presentation/",
+      "author": "Ahmet Cecen",
+      "categories": ""
+    }
+    ,
+  
+
+    "project1-2016-05-02-new-matlab-script": {
+      "title": "New Matlab Script",
+      "content"	 : " Workflow Overview graph TBnode1(Load Variables From Workspace)click node1 &quot;#1&quot;node1(Load Variables From Workspace) --&amp;gt; node2(Obtain 2-Point Statistics)click node2 &quot;#2&quot;node2(Obtain 2-Point Statistics) --&amp;gt; node3(PCA)click node3 &quot;#3&quot;node3(PCA) --&amp;gt; node4(Function Estimation)click node4 &quot;#4&quot;Obtain the direct to Project-Pages publish function here.Load Variables From WorkspaceLoading the microstructures and the effective property.load GDL200Volumes.matload MPL290Volumes.matload EffectiveProperty290MPL200GDLinThatOrder.matObtain 2-Point StatisticsGG = zeros(490,49^3);for i=1:290    current = MPL{i};    GGcurrent = TwoPointMaster(&#39;full&#39;,&#39;auto&#39;,25,current);    GG(i,:) = GGcurrent(:)/numel(current);    PP(i)=GGcurrent(25,25,25)/numel(current);endfor i=1:200    current = GDL{i};    GGcurrent = TwoPointMaster(&#39;full&#39;,&#39;auto&#39;,25,current);    GG(i+290,:) = GGcurrent(:)/numel(current);    PP(i+290)=GGcurrent(25,25,25)/numel(current);endPCAVia SVD: [PC1,Var1,Basis1]=PCAConstruct(GG,10);scatter(PC1(:,1),PC1(:,2),30,[ones(290,1);2*ones(200,1)],&#39;filled&#39;); colormap jet;Function EstimationUsing Multivariate Polynomial Regressionreg = MultiPolyRegress(PC1(:,1:2),R,3,&#39;figure&#39;)reg =            FitParameters: &#39;-----------------&#39;             PowerMatrix: [10x2 double]                  Scores: [490x10 double]    PolynomialExpression: [10x2 table]            Coefficients: [10x1 double]                    yhat: [490x1 double]               Residuals: [490x1 double]           GoodnessOfFit: &#39;-----------------&#39;                 RSquare: 0.9572                     MAE: 0.0571                  MAESTD: 0.0561           Normalization: &#39;1-to-1 (Default)&#39;      LOOCVGoodnessOfFit: &#39;-----------------&#39;               CVRSquare: 0.9556                   CVMAE: 0.0583                CVMAESTD: 0.0570         CVNormalization: &#39;1-to-1 (Default)&#39;Published with MATLAB® R2014b",
+      "url": "/project1/2016/05/02/New-Matlab-Script/",
+      "author": "Ahmet Cecen",
+      "categories": "project1"
+    }
+    ,
+  
+
+    "project1-2016-05-01-new-notebook": {
+      "title": "New Notebook",
+      "content"	 : "",
+      "url": "/project1/2016/05/01/New-Notebook/",
+      "author": "Ahmet Cecen",
+      "categories": "project1"
+    }
+    ,
+  
+
+    "project1-2016-04-19-new-post": {
+      "title": "New Post",
+      "content"	 : "Table of Contents  Table of Contents  Basic Functionality          Headers        Header 1          Header 2                  Header 3                    Styling      Lists      Links      Images      Code      MathJax      Tables      Quotes      Rule      HTML        Advanced Functionality          Color and Alignment        Some Advanced Features          Data Projector      STL      Basic FunctionalityHeadersHeader 1Header 2Header 3StylingBoldItalicsBold and ItalicsLists      Item 1        Item 2        Unordered Item                  Sub Item 1                  Bold Sub Sub Ordered Item                    LinksIn-LineI’m a reference-style link 1I’m a reference-style link 1ImagesHold your pointer clicked over the image to expand the view.CodeInline code.import numpy as npdef hello_world():    print(&#39;Hello World!&#39;&#39;)MathJaxUse MathJax for Math.Tables            Here      is      a      row!                  is      Left      Center      Right              a      cut      it      A              column      short      B      C      Quotes  War does not decide who is right, only who is left.RuleHTMLCan write the whole post or sections in HTML for very specific needs. [For the advanced user or the code savvy.]Advanced FunctionalityHead over to the documentation page for tutorials on some basic html formatting and some extensions you can use for cool stuff like interactive 3D visualizations.Color and AlignmentThis text is centered.This is a red text with blue and green inline text.Some Advanced FeaturesData ProjectorSTL",
+      "url": "/project1/2016/04/19/New-Post/",
+      "author": "Ahmet Cecen",
+      "categories": "project1"
+    }
+    
+  
+
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+}

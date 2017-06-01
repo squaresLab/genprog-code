@@ -1,0 +1,33 @@
+callback([
+
+  {
+    "text": "New Post",
+    "href": "http://localhost:4000/project1/2016/04/19/New-Post/"
+  } ,
+
+  {
+    "text": "New Notebook",
+    "href": "http://localhost:4000/project1/2016/05/01/New-Notebook/"
+  } ,
+
+  {
+    "text": "New Matlab Script",
+    "href": "http://localhost:4000/project1/2016/05/02/New-Matlab-Script/"
+  } ,
+
+  {
+    "text": "New Presentation",
+    "href": "http://localhost:4000/2016/05/02/New-Presentation/"
+  } ,
+
+  {
+    "text": "New Projector",
+    "href": "http://localhost:4000/2016/05/02/New-Projector/"
+  } ,
+
+  {
+    "text": "New Surface Visualization",
+    "href": "http://localhost:4000/2016/05/02/New-Surface-Visualization/"
+  } 
+
+])

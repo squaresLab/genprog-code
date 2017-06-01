@@ -1,0 +1,654 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Project Pages</title>
+    <description>An Integrated Scientific Blogging Template</description>
+    <link>http://localhost:4000/</link>
+    <atom:link href="http://localhost:4000/feed.xml" rel="self" type="application/rss+xml" />
+    <pubDate>Thu, 01 Jun 2017 17:10:50 -0400</pubDate>
+    <lastBuildDate>Thu, 01 Jun 2017 17:10:50 -0400</lastBuildDate>
+    <generator>Jekyll v3.4.3</generator>
+    
+      <item>
+        <title>New Surface Visualization</title>
+        <description>
+</description>
+        <pubDate>Mon, 02 May 2016 00:00:00 -0400</pubDate>
+        <link>http://localhost:4000/2016/05/02/New-Surface-Visualization/</link>
+        <guid isPermaLink="true">http://localhost:4000/2016/05/02/New-Surface-Visualization/</guid>
+        
+        <category>plysurface</category>
+        
+        <category>visualization</category>
+        
+        <category>template</category>
+        
+        
+      </item>
+    
+      <item>
+        <title>New Projector</title>
+        <description>
+</description>
+        <pubDate>Mon, 02 May 2016 00:00:00 -0400</pubDate>
+        <link>http://localhost:4000/2016/05/02/New-Projector/</link>
+        <guid isPermaLink="true">http://localhost:4000/2016/05/02/New-Projector/</guid>
+        
+        <category>projector</category>
+        
+        <category>visualization</category>
+        
+        <category>template</category>
+        
+        
+      </item>
+    
+      <item>
+        <title>New Presentation</title>
+        <description>
+  
+    New Presentation
+
+    
+
+    Ahmet Cecen
+
+    12 00 AM ,Mon, May 02 2016
+
+  
+
+
+  
+    
+
+    F11 to Fullscreen!
+
+    Showcasing Presentation Features. This template is ideal for very quickly creating decent presentations when content and simplicity is more important than excessive styling.
+
+  
+
+
+  
+
+    Seperate with {{ page.horizontal }} between content for horizontal slides.
+
+  
+  
+
+    Seperate with {{ page.vertical }} between content for vertical slides.
+
+  
+
+
+  
+
+    Press ESC for a zoomed out overview of the presentation.
+
+  
+
+
+  
+
+    Press B to pause the presentation.
+
+  
+
+
+  
+
+    Header 1
+
+    Header 2
+
+    Header 3
+
+  
+
+
+  
+
+    Styling
+
+    Bold
+
+    Italics
+
+    Bold and Italics
+
+  
+
+
+  
+
+    Use MathJax for Math.
+
+    
+
+  
+
+
+  
+
+    Lists
+
+    
+      
+        Item 1
+      
+      
+        Item 2
+      
+      
+        Item
+      
+    
+
+  
+
+
+  
+
+    Links
+
+    In-Line
+
+    I’m a reference-style link 1
+
+    I’m a reference-style link 1
+
+  
+
+
+  
+
+    Images
+
+    Alt-Click to zoom.
+
+    
+
+  
+
+
+  
+
+    Code
+
+    Inline code.
+
+  
+  
+
+    Code Block
+
+    import numpy as np
+def _set_colors():
+HighRGB = np.array([26, 152, 80]) / 255.
+
+    
+
+  
+
+
+  
+
+    Quotes
+
+    
+      War does not decide who is right, only who is left.
+    
+
+  
+
+
+  
+
+    HTML
+
+    Now, you CAN write in HTML using this template. If you want to create HTML presentations using this framework head over to reveal.js for reference.  For a power-point like interactive tool for creating presentations with this theme, check slides.com.
+
+  
+  
+
+    Some HTML Functionality
+
+    Color and Alignment
+
+    This text is centered.
+
+    This is a red text with blue and green inline text.
+
+  
+
+
+  
+
+    STL
+
+    
+
+  
+
+
+  
+
+    Data Projector
+
+    
+
+    
+  
+
+
+  
+
+    Print
+
+    Back
+
+  
+
+</description>
+        <pubDate>Mon, 02 May 2016 00:00:00 -0400</pubDate>
+        <link>http://localhost:4000/2016/05/02/New-Presentation/</link>
+        <guid isPermaLink="true">http://localhost:4000/2016/05/02/New-Presentation/</guid>
+        
+        <category>presentation</category>
+        
+        <category>template</category>
+        
+        
+      </item>
+    
+      <item>
+        <title>New Matlab Script</title>
+        <description>
+
+
+
+
+
+
+
+
+
+
+
+ Workflow Overview 
+
+
+
+
+
+
+graph TB
+
+
+
+
+
+
+
+
+
+node1(Load Variables From Workspace)
+
+
+
+click node1 &quot;#1&quot;
+
+
+
+
+
+
+
+
+
+
+
+
+
+node1(Load Variables From Workspace) --&amp;gt; node2(Obtain 2-Point Statistics)
+
+
+
+click node2 &quot;#2&quot;
+
+
+
+
+
+
+
+
+
+
+
+
+
+node2(Obtain 2-Point Statistics) --&amp;gt; node3(PCA)
+
+
+
+click node3 &quot;#3&quot;
+
+
+
+
+
+
+
+
+
+
+
+
+
+node3(PCA) --&amp;gt; node4(Function Estimation)
+
+
+
+click node4 &quot;#4&quot;
+
+
+
+
+
+Obtain the direct to Project-Pages publish function here.
+
+Load Variables From Workspace
+Loading the microstructures and the effective property.
+
+load GDL200Volumes.mat
+load MPL290Volumes.mat
+load EffectiveProperty290MPL200GDLinThatOrder.mat
+
+Obtain 2-Point Statistics
+
+GG = zeros(490,49^3);
+
+for i=1:290
+    current = MPL{i};
+    GGcurrent = TwoPointMaster('full','auto',25,current);
+    GG(i,:) = GGcurrent(:)/numel(current);
+    PP(i)=GGcurrent(25,25,25)/numel(current);
+end
+
+for i=1:200
+    current = GDL{i};
+    GGcurrent = TwoPointMaster('full','auto',25,current);
+    GG(i+290,:) = GGcurrent(:)/numel(current);
+    PP(i+290)=GGcurrent(25,25,25)/numel(current);
+end
+
+PCA
+Via SVD: 
+
+
+
+
+
+
+[PC1,Var1,Basis1]=PCAConstruct(GG,10);
+scatter(PC1(:,1),PC1(:,2),30,[ones(290,1);2*ones(200,1)],'filled'); colormap jet;
+
+
+Function Estimation
+Using Multivariate Polynomial Regression
+
+reg = MultiPolyRegress(PC1(:,1:2),R,3,'figure')
+
+reg = 
+
+           FitParameters: '-----------------'
+             PowerMatrix: [10x2 double]
+                  Scores: [490x10 double]
+    PolynomialExpression: [10x2 table]
+            Coefficients: [10x1 double]
+                    yhat: [490x1 double]
+               Residuals: [490x1 double]
+           GoodnessOfFit: '-----------------'
+                 RSquare: 0.9572
+                     MAE: 0.0571
+                  MAESTD: 0.0561
+           Normalization: '1-to-1 (Default)'
+      LOOCVGoodnessOfFit: '-----------------'
+               CVRSquare: 0.9556
+                   CVMAE: 0.0583
+                CVMAESTD: 0.0570
+         CVNormalization: '1-to-1 (Default)'
+
+
+
+Published with MATLAB® R2014b
+</description>
+        <pubDate>Mon, 02 May 2016 00:00:00 -0400</pubDate>
+        <link>http://localhost:4000/project1/2016/05/02/New-Matlab-Script/</link>
+        <guid isPermaLink="true">http://localhost:4000/project1/2016/05/02/New-Matlab-Script/</guid>
+        
+        <category>matlab</category>
+        
+        <category>workflows</category>
+        
+        <category>template</category>
+        
+        
+        <category>project1</category>
+        
+      </item>
+    
+      <item>
+        <title>New Notebook</title>
+        <description>
+</description>
+        <pubDate>Sun, 01 May 2016 00:00:00 -0400</pubDate>
+        <link>http://localhost:4000/project1/2016/05/01/New-Notebook/</link>
+        <guid isPermaLink="true">http://localhost:4000/project1/2016/05/01/New-Notebook/</guid>
+        
+        <category>jupyter</category>
+        
+        <category>workflows</category>
+        
+        <category>template</category>
+        
+        
+        <category>project1</category>
+        
+      </item>
+    
+      <item>
+        <title>New Post</title>
+        <description>
+
+Table of Contents
+
+
+  Table of Contents
+  Basic Functionality    
+      Headers
+    
+  
+  Header 1    
+      Header 2        
+          Header 3
+        
+      
+      Styling
+      Lists
+      Links
+      Images
+      Code
+      MathJax
+      Tables
+      Quotes
+      Rule
+      HTML
+    
+  
+  Advanced Functionality    
+      Color and Alignment
+    
+  
+  Some Advanced Features    
+      Data Projector
+      STL
+    
+  
+
+
+Basic Functionality
+
+Headers
+
+Header 1
+
+Header 2
+
+Header 3
+
+Styling
+
+Bold
+
+Italics
+
+Bold and Italics
+
+Lists
+
+
+  
+    Item 1
+  
+  
+    Item 2
+  
+
+
+
+  
+    Unordered Item
+
+    
+      
+        Sub Item 1
+
+        
+          Bold Sub Sub Ordered Item
+        
+      
+    
+  
+
+
+Links
+
+In-Line
+
+I’m a reference-style link 1
+
+I’m a reference-style link 1
+
+Images
+
+Hold your pointer clicked over the image to expand the view.
+
+
+
+Code
+
+Inline code.
+
+import numpy as np
+def hello_world():
+    print('Hello World!'')
+
+MathJax
+
+Use MathJax for Math.
+
+
+Tables
+
+
+  
+    
+      Here
+      is
+      a
+      row!
+    
+  
+  
+    
+      is
+      Left
+      Center
+      Right
+    
+    
+      a
+      cut
+      it
+      A
+    
+    
+      column
+      short
+      B
+      C
+    
+  
+
+
+Quotes
+
+
+  War does not decide who is right, only who is left.
+
+
+Rule
+
+
+
+HTML
+
+Can write the whole post or sections in HTML for very specific needs. [For the advanced user or the code savvy.]
+
+Advanced Functionality
+
+Head over to the documentation page for tutorials on some basic html formatting and some extensions you can use for cool stuff like interactive 3D visualizations.
+
+Color and Alignment
+
+This text is centered.
+
+This is a red text with blue and green inline text.
+
+Some Advanced Features
+
+Data Projector
+
+
+
+STL
+
+
+
+</description>
+        <pubDate>Tue, 19 Apr 2016 00:00:00 -0400</pubDate>
+        <link>http://localhost:4000/project1/2016/04/19/New-Post/</link>
+        <guid isPermaLink="true">http://localhost:4000/project1/2016/04/19/New-Post/</guid>
+        
+        <category>post</category>
+        
+        <category>template</category>
+        
+        
+        <category>project1</category>
+        
+      </item>
+    
+  </channel>
+</rss>
