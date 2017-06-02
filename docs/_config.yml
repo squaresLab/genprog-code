@@ -1,7 +1,7 @@
 # Site settings
 title: GenProg
 description: "Evolutionary Program Repair"
-url: "https://squareslab.github.io/genprog-code/"
+url: "https://squareslab.github.io/genprog-code"
 
 # Secondary Parameters
 baseurl: ''
