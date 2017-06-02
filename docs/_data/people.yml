@@ -1,0 +1,67 @@
+# People
+
+- name: Jonathan Dorn
+  affiliation: University of Virginia
+  url: http://www.cs.virginia.edu/~jad5ju/
+  visible: true
+  current: true
+
+- name: Neal Holtschulte
+  affiliation: University of New Mexico
+  url: http://www.cs.unm.edu/~neal.holts
+  visible: true
+  current: true
+
+- name: Eric Schulte
+  affiliation: moved on to GrammaTech
+  url: http://www.cs.unm.edu/~eschulte
+  visible: true
+  phd: true
+
+- name: ThanhVu Nguyen
+  affiliation: moved on to Microsoft
+  url: http://www.cs.unm.edu/~tnguyen
+  visible: true
+  phd: true
+
+- name: Zachary P. Fry
+  affiliation: moved on to GrammaTech
+  url: http://www.cs.virginia.edu/~zpf5a/
+  visible: true
+  phd: true
+
+- name: Brianna Satchell
+  affiliation: moved on to Microsoft
+  visible: true
+
+- name: Bryan Alex Landau
+  affiliation: moved on to Microsoft
+  visible: true
+  
+- name: Ethan Fast
+  affiliation: moved on to Stanford
+  visible: true
+  
+- name: Jeremy Lacomis
+  affiliation: moved on to Carnegie Mellon
+  visible: true
+  
+- name: Jonathan DiLorenzo
+  affiliation: moved on to Cornell
+  visible: true
+  
+- name: Michael Dewey-Vogt
+  affiliation: University of Virginia
+  visible: true
+  
+- name: Nicholas Jalbert
+  affiliation: moved on to Berkeley
+  visible: true
+  
+- name: Nicholas Modly
+  affiliation: University of Virginia
+  visible: true
+  
+- name: Shirley Park
+  affiliation: moved on to Carnegie Mellon
+  visible: true
