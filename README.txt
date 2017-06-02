@@ -1,34 +1,37 @@
 Author: Claire Le Goues
-Contact: legoues@cs.virginia.edu
+Modified by: Zak Fry
+Contact: zpf5a@virginia.edu, legoues@cs.virginia.edu
 Date Created: July 11, 2008
-Date Modified: January 8, 2013
+Date Modified: October 24, 2013
 
-Current publicly-available export of GenProg: svn rev 1411
+Current publicly-available export of GenProg: svn rev 1469
 
-This README contains a trail-map for the use and extension of "repair", used for
-the GenProg experiments that appear ICSE 2012 and GECCO 2012 (and others, and
-certainly all results thereafter, at least for now).
+This README contains a trail-map for the use and extension of
+"repair", used for the GenProg experiments that appear ASE 2013 (and
+others, and certainly all results thereafter, at least for now).
 
-This README describes the use of GenProg v2.0, a.k.a. "repair." Previous
-versions exist and are described elsewhere.  These instructions are less
-comprehensive than those that are associated with "modify" (v1.0) because Claire
-has had less time to compose them.  However, the instructions for repairing with
-"modify" can be adapted for use with this version, and there is no good reason
-that the experiments conducted with "modify" cannot be performed with "repair."
-However, there is likely to be slight differences in results between versions
-(as genetic programming is random).
+This README describes the use of GenProg v3.0, a.k.a. "repair."
+Previous versions exist and are described elsewhere.  These
+instructions closely mimic those associated with the previous version
+of repair (v2.0 and v2.3).  The command line options and code for
+previous versions of repair remain in this version of the code and
+should work as they did previously -- please see README's from the
+previous releases for more detailed explanations of the relevant
+options.
 
-These instructions primarily address the repair of C programs using the standard
-genetic algorithm.  Other search strategies and language front-ends exist.  In
-the interest of expediency, I am focusing on the type of repair I understand the
-best and for which results are appearing soonest.  Many of these instructions
-translate directly to different language front-ends, however, so you should be
-able to figure out ASM/ELF level repair pretty trivially if you understand
-C-level repair.  If you have questions about neutral-space search or
-ASM/ELF-level repair, I encourage you to email Eric Schulte
-(eschulte@cs.unm.edu).  There is also a README.asm in the src/ directory, though
-I have no idea how accurate it is.  The code is commented, which may help if you
-need more info on any aspect of repair.
+These instructions primarily address the repair of C programs using
+the updated genetic algorithm (see our ASE 2013 paper).  Other search
+strategies and language front-ends exist.  In the interest of
+expediency, I am focusing on the type of repair I understand the best
+and for which results are appearing soonest.  Many of these
+instructions translate directly to different language front-ends,
+however, so you should be able to figure out ASM/ELF level repair
+pretty trivially if you understand C-level repair.  If you have
+questions about neutral-space search or ASM/ELF-level repair, I
+encourage you to email Eric Schulte (eschulte@cs.unm.edu).  There is
+also a README.asm in the src/ directory, though I have no idea how
+accurate it is.  The code is commented, which may help if you need
+more info on any aspect of repair.
 
 These instructions include mention of how to compile for shader repair, but I
 unfortunately do not know how to run those experiments.  Email Wes for pointers
@@ -50,34 +53,38 @@ repair has a huge number of command-line options and implemented behaviors.
 I've tried to include enough info to get you started.
 
 *********
-* 0. ICSE/GECCO 2012 tarballs
+* 0. Benchmark program tarballs
 *********
 
-If you'd like to use the tarballs associated with the repair scenarios we ran
-for ICSE 2012 (we used similar scenarios but with different parameters for GECCO
-2012) "out of the box", you will need to use them with the VM image we provide,
-as they assume a certain directory structure.  Check out the instructions
-associated with the disk image we provide on genprog.cs.virginia.edu on how to
+If you'd like to use the tarballs associated with the repair scenarios
+we ran for ICSE 2012 (we used similar scenarios but with different
+parameters for GECCO 2012) and ASE 2013 "out of the box", you will
+need to use them with the VM image we provide, as they assume a
+certain directory structure.  Check out the instructions associated
+with the disk image we provide on genprog.cs.virginia.edu on how to
 set up the VirtualBox image.
 
 *********
 * 1. Basics
 *********
 
-The genprog prototype assumes bash scripting and standard utilities; win32 most
-likely requires cygwin.  Some number of experiments can be performed in OS X,
-with some extra legwork (non-exhaustive list: compiling CIL for OS X is notably
-annoying; you'll need to use gcc-4.0 of the default gcc-4.2 when compiling
-variants for coverage).
+The genprog prototype assumes bash scripting and standard utilities;
+win32 most likely requires cygwin.  Some number of experiments can be
+performed in OS X, with some extra legwork (non-exhaustive list:
+compiling CIL for OS X is notably annoying; you'll need to use gcc-4.0
+of the default gcc-4.2 when compiling variants for coverage).
 
-Ensure that sh is symlinked to bash, not dash (as is the default on Ubuntu), on
-your machine.
+Ensure that sh is symlinked to bash, not dash (as is the default on
+Ubuntu), on your machine.
 
-Our prototype is written in OCaml.  It should work for releases starting from at
-least 3.09.3; the most recent version of OCaml is 3.12.x.  Our code has been
-shown to work with this version, but it can cause some compilation shenanigans
-with the CIL library.  If you have a standard linux distro use your package
-manager. If not, it is available here:
+Our prototype is written in OCaml.  It should work for releases
+starting from at least 3.09.3; the most recent version of OCaml is
+4.01.x.  Our code has been shown to work with versions through 3.12.x,
+but it can cause some compilation shenanigans with the CIL library.
+GenProg may build with the newest version of OCaml, but we have not
+specifically tested it -- use at your own risk.  If you have a
+standard linux distro use your package manager. If not, it is
+available here:
 
     http://caml.inria.fr/ocaml/release.en.html
 
@@ -120,9 +127,10 @@ variable, make clean, export USE_PELLACINI=true, and re-make repair to use it.
 1) Building repair
 
 Once CIL is installed and the environment variable set, "make" in the
-genprog-code/src directory should do the trick.  Make sure the OCAML_OPTIONS
-line that points to the obj directory for CIL is referencing your distro (that
-is, change x86_LINUX to x86_DARWIN if you're on OSX).
+either the top level or the genprog-code/src directory should do the trick.  
+Make sure the OCAML_OPTIONS line that points to the obj directory for CIL 
+is referencing your distro (that is, change x86_LINUX to x86_DARWIN if 
+you're on OSX).
 
 The build process will produce several artifacts:
   -> repair: the main GenProg repair program 
@@ -151,11 +159,23 @@ compiles, passes the positive test cases, fails the negative test cases).
 repair will instrument the program for coverage information and compile and
 run the instrumented program on the test cases to generate positive and
 negative paths for localization.
-2) Repair then generates an initial population and computes the fitness of all
-variants by running them against all positive and negative test cases. 
-3) It then iterates until either the number of generations exceeds the
-specified/default limit or until a repair is found.
-4) If a repair is found, the source code for that variant will be printed to
+2) Repair then computes the comprehensive set of single-edit
+mutations.  From there, it computes approximate program equivalence
+between said mutations to remove redundant potential fixes. 
+3) The repair process then proceeds by iteratively selecting the most
+promising mutations (as dictated by the search strategy -- default is
+fault localization weight followed by the probability that it will
+fail tests early) and combining them into a "super mutant".  Super
+mutants incorporate many switch-guarded mutations into a single
+compilable program so that compilation only has to be performed once
+to test many mutations.
+4) Mutations are then tested in the determined search order to check
+for repairs.  The order that tests are run is also prioritized (by the
+likelihood a test will fail given historical data).  Mutations are
+tested to first failure.
+5) The process iterates until either the entire reduced set of
+semantically unique mutations have been evaluated or until a repair is found.
+6) If a repair is found, the source code for that variant will be printed to
 disk either in repair/ or repair.c (depending on whether the source code is one
 file or many).  If minimization is specified (not by default), the repair will
 then be minimized, and related files will be output Minimization_Files/.
@@ -180,9 +200,9 @@ cache file using --rep-cache X.
 Thus, to run repair on any program, AT THE VERY LEAST, you will need:
 
   -> (C) Source code.  This may be in one or many files, but it *must* be
-     preprocessed.  (Section 3.1)
-  -> compile script(s) (Section 3.2)
-  -> test script(s) (Section 3.3)
+     preprocessed.  (Section 3.2)
+  -> compile script(s) (Section 3.3)
+  -> test script(s) (Section 3.4)
 
 You might also want:
   -> localization info: there are several options here; check the output of
@@ -193,10 +213,40 @@ I highly recommend that you stop between acquiring the program source and the
 compile and test scripts and make sure that you can run them manually first.
 Check the permissions on those scripts in particular as they must be executable.
 
-The test directory also contains gcd-test/, an example repair scenario for the gcd program; you may find it useful as a reference.
+The test directory also contains gcd-test/, an example repair scenario
+for the gcd program; you may find it useful as a reference.
 
 *******
-* 3.1. Input program
+* 3.1. Search options
+*******
+
+This version of GenProg is being released in tandem with our ASE 2013
+paper in which we explore exhaustively enumerating all single-edit
+mutations and various search space reduction techniques.  As such,
+this section will mostly cover this functionality.  All previous
+search functionality is still present in the code however (e.g. most
+notably we used [--search "ga"] in the past).
+
+For the most recent instantiation of GenProg, the search type should
+be specified as follows: 
+   --search ww
+
+The following optimizations can be used to facilitate the repair process:
+   --ignore-dead-code  -- do not make known-dead mutations.
+   --ignore-standard-headers  -- do not mutate C library #include headers. 
+   --ignore-equiv-appends  -- do not make equivalent append mutations.
+   --ignore-string-equiv-fixes  -- do not consider string-equivalent fixes twice.
+   --ignore-untyped-returns  -- do not insert 'return' if the types mismatch.
+By default, we include all of these in our ASE 2013 experiments.
+
+An additional optimization is that of super-mutants, explained above.
+The necessary options to enable super mutants are as follows:
+   --super-mutant true
+   --super-mutant-size X
+We use a value of 50 for X in the associated ASE 2013 experiments.
+
+*******
+* 3.2. Input program
 *******
 
 Relevant command-line options:
@@ -280,7 +330,7 @@ To repair, include the following flags:
 --prefix preprocessed
 
 ********
-* 3.2 Compilation
+* 3.3 Compilation
 *******
 
 --compiler compiler-name
@@ -308,7 +358,7 @@ gcc -o foo foo.c, you might say:
 Or similar.
 
 *******
-* 3.3 Testing
+* 3.4 Testing
 ******
 
 0) Scripts
@@ -338,10 +388,24 @@ avoiding infinite loops, but any similar mechanism will work as well.
 
 1) Other concerns 
 
---pos-tests N
---neg-tests N
---fitness-in-parallel N 
---sample X
+Sanity checking:
+  --sanity yes
+  --skip-failed-sanity-tests
+Running a sanity check before checking any potential repair candidates
+ensures that test suite behaves as intended on the original program
+(i.e. all positive tests pass and all negative tests fail).  In
+general sanity checking is a good practice, however we have found
+certain tests cases that behave inconsistently (perhaps due to
+nondeterminism), and thus include the --skip-failed-sanity-tests
+option.  Any tests that fail sanity should generally be checked
+manually to examine the cause of said failures, but should the user
+want to discard any failed tests by default, this option can be used.
+
+Testing:
+  --pos-tests N
+  --neg-tests N
+  --fitness-in-parallel N 
+  --sample X
 
 --pos-tests and --neg-tests specify the number of positive and negative tests
   respectively.
@@ -368,9 +432,6 @@ set and consulting the configuration files associated with each scenario to get
 an idea of what they are, or calling ./repair --help I have tried to make their
 descriptions somewhat indicative, and thus I omit additional instructions here
 for the sake of brevity.
-
-I would recommend at least using --seed X for each run, which makes everything
-neater. 
 
 CAVEAT: as of 5/10/12, I have not yet regenerated the configuration files for
 those benchmarks to make use of the refactored version of the command line
