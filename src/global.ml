@@ -262,7 +262,7 @@ let deprecated_and_not_ok = [
   "--apply-diff"; "--debug-put"; 
   "--convert-swaps";
   "--preprocess"; "--preprocessor";
-  "--use-line-file"; "--mutp";
+  "--use-line-file";
   "--use-path-file";
 ]
 
@@ -276,7 +276,7 @@ let with_arg = [
 let deprecated_but_ok = [
   "--recompute-weights";
   "--use-subdirs"; "--use-full-paths"; "--multi-file"; "--print-fix-info"; 
- "--suffix-extension"; "--delete-subdirs";  "--use-subatoms";
+ "--suffix-extension"; "--delete-subdirs";  "--use-subatoms";  "--mutp";
 (* I'm assuming that if you say use-subatoms you also set subatom_mutp to something *)
 ]
 
@@ -356,7 +356,7 @@ let deprecated_and_simulable = [
 
   "--prepare",
   Arg.Unit (fun () -> 
-    let str = Printf.sprintf "--generations 0 " in
+    let str = Printf.sprintf "--generations 0 --popsize 0" in
       new_deprecated_args := !new_deprecated_args^str), "";
 ]
 
