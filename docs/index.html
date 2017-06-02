@@ -1,38 +1,58 @@
 ---
 layout: page
 ---
-{% for post in paginator.posts %}
-<div class="post-preview">
-    <a href="{{ post.url | prepend: site.baseurl }}">
-        <h2 class="post-title">            {{ post.title }}
-        </h2>
-        {% if post.subtitle %}
-        <h3 class="post-subtitle">
-            {{ post.subtitle }}
-        </h3>
-        {% endif %}
-    </a>
-    <p class="post-meta" style="margin-bottom:5px">Posted by {{ post.author }} on {{ post.date | date: "%B %-d, %Y" }}</p>
-	<div class="notepad-index-post-tags" style="">
-		{% for tag in post.tags %}<a href="{{ site.baseurl }}/search/index.html#{{ tag | cgi_encode }}" title="Other posts from the {{ tag | capitalize }} tag">{{ tag | capitalize }}</a>{% unless forloop.last %}&nbsp;{% endunless %}{% endfor %}
-	</div>
-</div>
-<hr>
-{% endfor %}
+<h2>The Problem</h2>
+<p>
+  Software engineering is expensive, summing to over one half of one percent of
+the US GDP annually. Software maintenance accounts for over two-thirds of that
+life cycle cost, and a key aspect of maintenance is fixing bugs in existing
+programs. Unfortunately, the number of reported bugs far outstrips available
+development resources. It is common for a popular project to have hundreds of
+new bug reports filed every day.
+</p>
+<p>
+Software maintenance is expensive. GenProg reduces software maintenance costs by
+automatically producing patches (repairs) for program defects.
+</p>
 
-<!-- Pager -->
-{% if paginator.total_pages > 1 %}
-<ul class="pager">
-    {% if paginator.previous_page %}
-    <li class="previous">
-        <a href="{{ paginator.previous_page_path | prepend: site.baseurl | replace: '//', '/' }}">&larr; Newer Posts</a>
-    </li>
-    {% endif %}
-    {% if paginator.next_page %}
-    <li class="next">
-        <a href="{{ paginator.next_page_path | prepend: site.baseurl | replace: '//', '/' }}">Older Posts &rarr;</a>
-    </li>
-    {% endif %}
-</ul>
-{% endif %}
+<h2>Our Approach</h2>
+<p>
+Many bugs can be fixed with just a few changes to a program's source code. Human
+repairs often involve inserting new code and deleting or moving existing
+code. GenProg uses those same building blocks to search for repairs
+automatically.
+</p>
+<p>
+GenProg uses genetic programming to search for repairs. Our evolutionary
+computation represents candidate repairs as sequences of edits to software
+source code. Each candidate in a large population is applied to the original
+program to produce a new program, which is evaluated using test suites. Those
+candidates that pass more tests are said to have a higher fitness and are
+iteratively subjected to computational analogs of the biological processes of
+mutation and crossover. This process terminates when a candidate repair is found
+that retains all required functionality and fixes the bug. GenProg does not
+require special code annotations or formal specifications, and applies to
+unmodified legacy software.
+</p>
 
+<h2>Our Results</h2>
+<p>
+GenProg has repaired many kinds of defects, including infinite loops,
+segmentation violations, heap buffer overflows, non-overflow denial-of-service
+vulnerabilities, stack buffer overflows, format string vulnerabilities, integer
+overflows — as well as the ubiquitous "my program produces the incorrect output"
+bug. While we evaluate primarily on C programs, GenProg can also repair programs
+in other languages, such as x86 or ARM assembly files or ELF binaries.
+</p>
+<p>
+GenProg repaired 55 out of 105 bugs for $8 each in a recent systematic study
+that included multiple programs, totaling over 5 million lines of code, and
+supported by over 10,000 test cases.
+</p>
+<p>
+GenProg has won multiple academic best paper awards (ICSE 2009, GECCO 2009, SBST
+2009). In addition, this work was awarded the IFIP TC2 Manfred Paul Award "for
+excellence in software: theory and practice." Finally, GenProg won gold (in
+2009) and bronze (in 2012) honors at the "Humies" Awards for human-competitive
+results produced by genetic and evolutionary computation.
+</p>
