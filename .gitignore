@@ -16,3 +16,7 @@ src/edit
 
 ## Tags file
 TAGS
+
+## Emacs auto save files
+*~
+\#*\#
