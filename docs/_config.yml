@@ -1,10 +1,7 @@
 # Site settings
-title: Project Pages
-description: "An Integrated Scientific Blogging Template"
+title: GenProg
+description: "Evolutionary Program Repair"
 url: "https://squareslab.github.io/genprog-code/"
-
-
-
 
 # Secondary Parameters
 baseurl: ''
