@@ -4,7 +4,7 @@
 
 (*
  *
- * Copyright (c) 2001-2002,
+ * Copyright (c) 2001-2017,
  *  John Kodumal        <jkodumal@eecs.berkeley.edu>
  * All rights reserved.
  *

@@ -1,6 +1,6 @@
 (*
  *
- * Copyright (c) 2012-2013,
+ * Copyright (c) 2012-2017,
  *  Wes Weimer          <weimer@cs.virginia.edu>
  *  Stephanie Forrest   <forrest@cs.unm.edu>
  *  Eric Schulte        <eschulte@cs.unm.edu>
