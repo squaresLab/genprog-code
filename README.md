@@ -189,10 +189,10 @@ names for the repair cache file using `--rep-cache X`.
 
 Thus, to run repair on any program, *at the very least*, you will need:
 
-* [(C) Source code](#31inputprogram).  This may be in one or many files, but it
-  *must* be preprocessed.
-* [compile script(s)](#32compilation)
-* [test script(s)](#33testing)
+* [(C) Source code](#31-input-program).  This may be in one or many files, but
+  it *must* be preprocessed.
+* [compile script(s)](#32-compilation)
+* [test script(s)](#33-testing)
 
 You might also want:
 * localization info: there are several options here; check the output of
