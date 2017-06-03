@@ -1,9 +1,17 @@
 ---
 layout: page
 title: "Publications"
-description: "GenProg or GenProg-related publications"
-header-img: "img/home-bg.jpg"
+description: "GenProg-related publications"
 ---
+
+This page lists GenProg-specific publications, focusing primarily on those whose
+data and experiments were implemented on top of the GenProg codebase by researchers
+related to the core GenProg team.  program-repair.org provides a much more
+complete, community-supported list of papers related to program repair
+generally, including papers that build upon or compare to GenProg.
+
+This page is sorted topically:
+
 
 Claire Le Goues, Neal Holtschulte, Edward K. Smith, Yuriy Brun, Premkumar
 Devanbu, Stephanie Forrest, Westley Weimer: The ManyBugs and IntroClass
