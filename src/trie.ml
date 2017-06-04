@@ -4,7 +4,7 @@
  *  Wes Weimer          <weimer@cs.virginia.edu>
  *  Stephanie Forrest   <forrest@cs.unm.edu>
  *  Jonathan Dorn       <dorn@virginia.edu>
- *  Jeremy Lacomis      <lacomis@virginia.edu>
+ *  Jeremy Lacomis      <jlacomis@cmu.edu>
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without

@@ -5,7 +5,7 @@
  *  Stephanie Forrest   <forrest@cs.unm.edu>
  *  Claire Le Goues     <legoues@cs.cmu.edu>
  *  Eric Schulte        <eschulte@cs.unm.edu>
- *  Jeremy Lacomis      <lacomis@virginia.edu>
+ *  Jeremy Lacomis      <jlacomis@cmu.edu>
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
@@ -63,7 +63,7 @@ module StringTrie = Trie.Make(OrderedChar)
   
 (**/**)
 
-(** @version 6 *)
+(** @version 7 *)
 class asmRep = object (self : 'self_type)
   inherit stringRep as super
 
