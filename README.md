@@ -34,8 +34,8 @@ C-level repair. Previous READMEs advise contacting Eric Schulte
 (<eschulte@cs.unm.edu>) for questions about neutral-space search or
 ASM/ELF-level repair, but the ASM representation has completely changed. For
 questions about ASM repair, you should email Jeremy Lacomis
-(<jlacomis@cmu.edu>). The `README.asm` file in the `src/` directory has changed
-to reflect the new ASM code.
+(<jlacomis@cmu.edu>). The [README.md](src/README.md) file in the `src/`
+directory has changed to reflect the new ASM code.
 
 These instructions include mention of how to compile for shader repair, but I
 unfortunately do not know how to run those experiments.  Email Wes for pointers
