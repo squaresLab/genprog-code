@@ -5,19 +5,23 @@ description: "GenProg-related publications"
 ---
 
 This page lists GenProg-specific publications, focusing primarily on those whose
-data and experiments were implemented on top of the GenProg codebase by researchers
-related to the core GenProg team.  program-repair.org provides a much more
+data and experiments were implemented on top of the GenProg codebase by
+researchers related to the core GenProg
+team.  [program-repair.org](http://program-repair.org/) provides a much more
 complete, community-supported list of papers related to program repair
 generally, including papers that build upon or compare to GenProg.
 
-This page is sorted topically:
+*This page is sorted topically:*
 
+---
+
+Automated Program Repair:
+-------------------------
 
 Claire Le Goues, Neal Holtschulte, Edward K. Smith, Yuriy Brun, Premkumar
 Devanbu, Stephanie Forrest, Westley Weimer: The ManyBugs and IntroClass
 Benchmarks for Automated Repair of C Programs. IEEE Transactions on Software
 Engineering 2015
-
 
 Claire Le Goues, Stephanie Forrest, Westley Weimer: Current Challenges in Automatic Software Repair. Software Quality Journal 21(3): 421-443 (2013)
 
@@ -37,7 +41,6 @@ No. 5, May 2010, Pages 109-116.
 Westley Weimer: Advances in Automated Program Repair and a Call To
 Arms. Symposium on Search Based Software Engineering (SSBSE) 2013: 1-3
 
-
 Stephanie Forrest, Westley Weimer, ThanhVu Nguyen, Claire Le Goues. A Genetic
 Programming Approach to Automated Software Repair. Genetic and Evolutionary
 Computing Conference (GECCO) 2009: 947-954 (best paper award) (gold
@@ -56,7 +59,10 @@ Finding Patches Using Genetic Programming. International Conference on Software
 Engineering (ICSE) 2009: 364-374 (distinguished paper award) (IFIP TC2 Manfred
 Paul award)
 
+---
+
 Search specifics:
+-----------------
 
 SSBSE 2016
 
@@ -72,8 +78,10 @@ Ethan Fast, Claire Le Goues, Stephanie Forrest, Westley Weimer: Designing better
 fitness functions for automated program repair. Genetic and Evolutionary
 Computing Conference (GECCO) 2010: 965-972
 
+---
 
 Patch quality, software robustness:
+-----------------------------------
 
 ESEC/FSE 15 on patch quality
 
@@ -85,7 +93,10 @@ Eric Schulte, Zachary P. Fry, Ethan Fast, Westley Weimer, Stephanie Forrest:
 Software Mutational Robustness. Journ. Genetic Programming and Evolvable
 Machines 2013: July 28
 
+---
+
 Non-functional or quality properties:
+-------------------------------------
 
 Adam Brady, Jason Lawrence, Pieter Peers, Westley Weimer: genBRDF: Discovering
 New analytic BRDFs with Genetic Programming. ACM Transactions on Graphics
