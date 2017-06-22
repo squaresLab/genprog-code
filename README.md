@@ -89,8 +89,17 @@ latest versions as well.
 1. CIL
 
     We use [CIL](https://github.com/cil-project/cil) to parse C and manipulate
-    ASTs. Anything newer than CIL 1.7.3 should work. Make sure that you have the
-    OCaml compiler, perl, and [ocamlfind][] installed and run:
+    ASTs. Anything newer than CIL 1.7.3 should work. The easiest way to get CIL
+    is with [opam][] by running:
+
+        opam install cil
+
+    If you install CIL using opam, make sure that the CIL environment variable
+    isn't set and move on the step 2. If you choose to skip opam, the following
+    instructions should work:
+
+    Make sure that you have the OCaml compiler, perl, and [ocamlfind][]
+    installed and run:
 
         cd cil
         ./configure
