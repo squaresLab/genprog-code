@@ -22,7 +22,7 @@ Claire Le Goues, Neal Holtschulte, Edward K. Smith, Yuriy Brun, Premkumar
 Devanbu, Stephanie Forrest, Westley Weimer: The ManyBugs and IntroClass
 Benchmarks for Automated Repair of C Programs. IEEE Transactions on Software
 Engineering 2015  
-[PDF]() [BibTeX]()
+[PDF](https://github.com/squaresLab/papers-repo/raw/master/pdfs/benchmarks-2015-tse-preprint.pdf) [BibTeX]()
 
 Claire Le Goues, Stephanie Forrest, Westley Weimer: Current Challenges in
 Automatic Software Repair. Software Quality Journal 21(3): 421-443 (2013)  
@@ -33,11 +33,6 @@ Systematic Study of Automated Program Repair: Fixing 55 out of 105 bugs for $8
 Each. International Conference on Software Engineering (ICSE) 2012.  [Pointer to
 TSE 2015]  
 [PDF](https://github.com/squaresLab/papers-repo/raw/master/pdfs/weimer-icse2012-genprog-preprint.pdf) [BibTeX]()
-
-Claire Le Goues, ThanhVu Nguyen, Stephanie Forrest and Westley Weimer. GenProg:
-A Generic Method for Automated Software Repair. IEEE Transactions on Software
-Engineering (TSE) 38(1): 54-72 (January/February 2012). (featured article)  
-[PDF](https://github.com/squaresLab/papers-repo/raw/master/pdfs/weimer-tse2012-genprog.pdf) [BibTeX]()
 
 Claire Le Goues, Stephanie Forrest, Westley Weimer: The Case for Software
 Evolution. Foundations of Software Engineering Working Conference on the Future
@@ -51,7 +46,7 @@ No. 5, May 2010, Pages 109-116.
 
 Westley Weimer: Advances in Automated Program Repair and a Call To
 Arms. Symposium on Search Based Software Engineering (SSBSE) 2013: 1-3  
-[PDF]() [BibTeX]()
+[Slides](https://github.com/squaresLab/papers-repo/raw/master/pdfs/weimer-ssbse2013-presentation.pdf) [BibTeX]()
 
 Stephanie Forrest, Westley Weimer, ThanhVu Nguyen, Claire Le Goues. A Genetic
 Programming Approach to Automated Software Repair. Genetic and Evolutionary
@@ -62,7 +57,7 @@ human-competitive award)
 Claire Le Goues, ThanhVu Nguyen, Stephanie Forrest, Westley Weimer: GenProg: A
 Generic Method for Automated Software Repair. IEEE Trans. Software Engineering
 38(1): 54-72 (January/February 2012) (featured paper award)  
-[PDF]() [BibTeX]()
+[PDF](https://github.com/squaresLab/papers-repo/raw/master/pdfs/weimer-tse2012-genprog.pdf) [BibTeX]()
 
 ThanhVu Nguyen, Westley Weimer, Claire Le Goues, Stephanie Forrest. Using
 Execution Paths to Evolve Software Patches. Workshop on Search-Based Software
@@ -79,9 +74,11 @@ Paul award)
 
 Search specifics:
 -----------------
-
-SSBSE 2016  
-[PDF]() [BibTeX]()
+Vinicius Paulo L. Oliveira, Eduardo F. D. Souza, Claire Le Goues, and Celso
+G. Camilo-Junior. Improved Crossover Operators for Genetic Programming for
+Program Repair. In Proceedings of the 8th International Symposium on Search
+Based Software Engineering (SSBSE ’16). 2016, pp. 112–127.  
+[PDF](https://github.com/squaresLab/papers-repo/raw/master/pdfs/legoues-ssbse16.pdf) [BibTeX]()
 
 Claire Le Goues, Westley Weimer, Stephanie Forrest: Representations and
 Operators for Improving Evolutionary Software Repair. Genetic and Evolutionary
@@ -103,8 +100,12 @@ Computing Conference (GECCO) 2010: 965-972
 Patch quality, software robustness:
 -----------------------------------
 
-ESEC/FSE 15 on patch quality  
-[PDF]() [BibTeX]()
+Edward K. Smith, Earl Barr, Claire Le Goues, and Yuriy Brun, Is the Cure Worse
+than the Disease? Overfitting in Automated Program Repair, in Proceedings of the
+10th Joint Meeting of the European Software Engineering Conference and ACM
+SIGSOFT Symposium on the Foundations of Software Engineering (ESEC/FSE ’15),
+2015: 532–543.  
+[PDF](https://github.com/squaresLab/papers-repo/raw/master/pdfs/smith15fse.pdf) [BibTeX]()
 
 Zachary P. Fry, Bryan Landau, Westley Weimer: A Human Study of Patch
 Maintainability. International Symposium on Software Testing and Analysis
