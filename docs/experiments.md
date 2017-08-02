@@ -50,11 +50,60 @@ These experiments cover the GenProg publications in both ICSE 2009 and GECCO 200
 
 ---
 
+Search specifics:
+-----------------
+
+**SSBSE 2016:**  
+[FIXME]()
+
+**GECCO 2012:**  
+These include repair results for various genetic algorithm parameter values.  
+[Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-gecco2012-results.tar.gz)
+
+**GECCO 2010:**  
+[Benchmarks](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-2010.tar.gz)
+[Code](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz)
+
+---
+
 Patch quality, software robustness:
 -----------------------------------
+
+**ESEC/FSE 2015:**  
+[FIXME]()
+
+**GPEM 2013:**  
+These results relate to neutral mutants and software mutational
+robustness. Experimental results
+for
+[higher order neutral mutants](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-gpem-2013-higher-order.tar.bz2) are
+also
+available.
+[Benchmarks](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-gpem-2013.tar.gz2) [Sorting Programs](https://github.com/eschulte/sorters) [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-gpem-2013.tar.gz)
+
+**ISSTA 2012:**  
+This dataset includes the subject code and questions presented to humans,
+as well as the human responses.  
+[Dataset](http://dijkstra.cs.virginia.edu/genprog/resources/issta2012-study-data.zip)
 
 ---
 
 Non-functional or quality properties:
 -------------------------------------
 
+**ASPLOS 2014:**  
+These experiments use GenProg-like approaches to reduce the power consumption of
+software.  
+[Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-asplos-2014.tar.bz2)
+[Code](https://github.com/eschulte/goa/tree/asplos2014)
+
+**ASPLOS 2013:**  
+These experiments relate to the automated repair of assembly and binaries in
+embedded systems.
+[Benchmarks](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-asplos-2013.tar.bz2)
+[Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-asplos-2013.tar.bz2)
+
+**ASE 2013**  
+These experiments relate to the Adaptive Equality repair algorithm
+[Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-ase2013-results.zip)
+[Code](https://github.com/squaresLab/genprog-code/tree/releases/v3.0)
