@@ -2,6 +2,7 @@
 layout: page
 title: "Publications"
 description: "GenProg-related publications"
+header-img: "img/header.jpg"
 ---
 
 This page lists GenProg-specific publications, focusing primarily on those whose
@@ -147,4 +148,3 @@ Westley Weimer, Zachary P. Fry, Stephanie Forrest: Leveraging Program
 Equivalence for Adaptive Program Repair: Models and First Results. Automated
 Software Engineering (ASE) 2013.  
 [PDF](https://github.com/squaresLab/papers-repo/raw/master/pdfs/weimer-ase2013-preprint.pdf) [BibTeX]()
-
