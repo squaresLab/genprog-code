@@ -7,7 +7,7 @@ header-img: "img/header.jpg"
 
 GenProg is primarily a collaboration
 between [Westley Weimer](http://www.cs.virginia.edu/~weimer) at the University
-of Virginia, [Stephanie Forrest](http://www.cs.unm.edu/~forrest) at the
+of Michigan - Ann Arbor, [Stephanie Forrest](http://www.cs.unm.edu/~forrest) at the
 University of New Mexico,
 and [Claire Le&nbsp;Goues](http://www.cs.cmu.edu/~clegoues/) at Carnegie Mellon
 University.
@@ -17,7 +17,7 @@ researchers, without whom this project would not be possible:
 
 ---
 
-### Current graduate researchers:
+### Current researchers:
 
 {% for person in site.data.people %} {% if person.visible == true %}
 {% if person.current == true %}

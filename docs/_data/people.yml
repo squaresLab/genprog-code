@@ -1,5 +1,11 @@
 # People
 
+- name: Christopher Timperley
+  affiliation: Post-Doctoral Researcher, Carnegie Mellon University
+  visible: true
+  phd: true
+  current: true
+
 - name: Jonathan Dorn
   affiliation: University of Virginia
   url: http://www.cs.virginia.edu/~jad5ju/
@@ -10,7 +16,6 @@
   affiliation: University of New Mexico
   url: http://www.cs.unm.edu/~neal.holts
   visible: true
-  current: true
 
 - name: Eric Schulte
   affiliation: moved on to GrammaTech
