@@ -10,11 +10,9 @@ headercolor: "#FFFFFF"
 #logo: /img/header.jpg
 
 # Tertiary Parameters
-github_username:  projectpages
+github_username: squareslab
 project_repository: genprog-code
-disqus_shortname: project-pages
-g-analytics: UA-75881392-1
-altmetric: true
+disqus_shortname: genprog-code
 
 # Build settings
 gems: [jekyll-paginate]
