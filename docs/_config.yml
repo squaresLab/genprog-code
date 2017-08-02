@@ -4,7 +4,7 @@ description: "Evolutionary Program Repair"
 url: "https://squareslab.github.io"
 
 # Secondary Parameters
-baseurl: ''
+baseurl: '/genprog-code'
 header-img: img/header.jpg
 headercolor: "#FFFFFF"
 #logo: /img/header.jpg
