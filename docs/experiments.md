@@ -16,10 +16,24 @@ paper, so that others can reproduce or extend those experiments.
 Code
 -------------------------
 
-The main GenProg repository is available on GitHub.  We tag releases
-corresponding to experiments in various papers, as follows.  
+There are several sources of code used in our publications:
 
-<a id="gpv1.0"></a>The experiments in ICSE 2009, GECCO 2009, GECCO 2010 and TSE 2012 used an older
+* [GenProg Source Code (for C)](https://github.com/squaresLab/genprog-code). We tag releases
+for experiments in various papers, described on the
+[releases page.](https://github.com/squaresLab/genprog-code/releases) 
+* [Software Evolution
+Library](https://github.com/eschulte/software-evolution). This common interface
+abstracts over multiple types 
+of software objects including abstract syntax trees parsed from source code,
+LLVM IR, compiled assembler, and linked ELF binaries. Mutation and evaluation
+methods are implemented on top of this interface. This code was used for
+experiments appearing in ASPLOS 2014.   
+* [Genetic Optimization
+Algorithm](https://github.com/eschulte/goa). This GOA implementation accepts an assembly 
+program with a workload and a fitness function (e.g., power consumption) and
+optimizes that fitness function. This source code was used for experiments
+appearing in ASPLOS 2014. 
+* <a id="gpv1.0"></a>The experiments in ICSE 2009, GECCO 2009, GECCO 2010 and TSE 2012 used an older
 version of GenProg. A snapshot of that codebase is available:
 [GenProg v1.0](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz)
 
