@@ -44,6 +44,11 @@ Automatic Software Repair. Software Quality Journal (SQJO), 2013.
 [DOI](https://doi.org/10.1007/s11219-013-9208-0) 
 [BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-sqjo13.bib)
 
+Westley Weimer: Advances in Automated Program Repair and a Call To
+Arms. Symposium on Search Based Software Engineering (SSBSE), 2013.  
+[Slides](https://squareslab.github.io/papers-repo/pdfs/weimer-ssbse2013-presentation.pdf) 
+[BibTeX](https://squareslab.github.io/papers-repo/bib/weimer-ssbse13.bib)
+
 <a id="icse12"></a>Claire Le Goues, Michael Dewey-Vogt, Stephanie Forrest, Westley Weimer: A
 Systematic Study of Automated Program Repair: Fixing 55 out of 105 bugs for $8
 Each. International Conference on Software Engineering (ICSE), 2012. **Note:
@@ -68,6 +73,11 @@ Generic Method for Automated Software Repair. IEEE Trans. Software Engineering
 [Dataset, Workloads, and Demo](/experiments/index.html#tse12)
 [Experimental Results]()
 
+Eric Schulte, Stephanie Forrest, Westley Weimer: Automated Program Repair
+through the Evolution of Assembly Code. Automated Software Engineering (ASE)
+Short Paper 2010: 313-316  
+[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-ase2010-asm-preprint.pdf) [BibTeX]()
+
 Claire Le Goues, Stephanie Forrest, Westley Weimer: The Case for Software
 Evolution. Foundations of Software Engineering Working Conference on the Future
 of Software Engineering (FoSER), at the International Symposium on Foundations
@@ -81,11 +91,6 @@ Program Repair With Evolutionary Computation. Communications of the ACM (CACM), 
 [PDF](https://squareslab.github.io/papers-repo/pdfs/p109-weimer.pdf) 
 [DOI](http://doi.acm.org/10.1145/1735223.1735249)
 [BibTeX](https://squareslab.github.io/papers-repo/bib/weimer-cacm10.bib)
-
-Westley Weimer: Advances in Automated Program Repair and a Call To
-Arms. Symposium on Search Based Software Engineering (SSBSE), 2013.  
-[Slides](https://squareslab.github.io/papers-repo/pdfs/weimer-ssbse2013-presentation.pdf) 
-[BibTeX](https://squareslab.github.io/papers-repo/bib/weimer-ssbse13.bib)
 
 Stephanie Forrest, Westley Weimer, ThanhVu Nguyen, Claire Le Goues. A Genetic
 Programming Approach to Automated Software Repair. Genetic and Evolutionary
@@ -125,17 +130,19 @@ G. Camilo-Junior. Improved Crossover Operators for Genetic Programming for
 Program Repair. In Proceedings of the 8th International Symposium on Search
 Based Software Engineering (SSBSE), 2016.  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/legoues-ssbse16.pdf) 
-[BibTeX]()
+[DOI](https://doi.org/10.1007/978-3-319-47106-8_8)
+[BibTeX](https://squareslab.github.io/papers-repo/bib/oliveira-ssbse16.bib)
 
 Claire Le Goues, Westley Weimer, Stephanie Forrest: Representations and
 Operators for Improving Evolutionary Software Repair. Genetic and Evolutionary
-Computing Conference (GECCO) 2012: 959-966  
-[PDF](https://squareslab.github.io/papers-repo/pdfs/genprog-gecco2012-preprint.pdf) [BibTeX]()
-
-Eric Schulte, Stephanie Forrest, Westley Weimer: Automated Program Repair
-through the Evolution of Assembly Code. Automated Software Engineering (ASE)
-Short Paper 2010: 313-316  
-[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-ase2010-asm-preprint.pdf) [BibTeX]()
+Computing Conference (GECCO), 2012.    
+[PDF](https://squareslab.github.io/papers-repo/pdfs/genprog-gecco2012-preprint.pdf) 
+[DOI](http://doi.acm.org/10.1145/2330163.2330296)
+[BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-gecco12.bib) |
+[Code](https://github.com/squaresLab/genprog-code/tree/releases/v2.0)
+[Virtual Machine Images](http://dijkstra.cs.virginia.edu/genprog/resources/genprog_images)
+[Dataset](/experiments/index.html#icse12)
+[Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-gecco2012-results.tar.gz)
 
 Ethan Fast, Claire Le Goues, Stephanie Forrest, Westley Weimer: Designing better
 fitness functions for automated program repair. Genetic and Evolutionary
@@ -174,7 +181,7 @@ New analytic BRDFs with Genetic Programming. ACM Transactions on Graphics
 (Proc. SIGGRAPH), 2014.  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/brady-siggraph2014.pdf) [BibTeX]()
 
-Eric Schulte, Jonathan Dorn, Stephen Harding, Stephanie Forrest, Westley Weimer:
+<a id="asplos14"></a>Eric Schulte, Jonathan Dorn, Stephen Harding, Stephanie Forrest, Westley Weimer:
 Post-compiler Software Optimization for Reducing Energy. Architectural Support
 for Programming Languages and Operating Systems (ASPLOS) 2014: 639-652  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/schulte-asplos2014.pdf) [BibTeX]()

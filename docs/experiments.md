@@ -27,12 +27,12 @@ abstracts over multiple types
 of software objects including abstract syntax trees parsed from source code,
 LLVM IR, compiled assembler, and linked ELF binaries. Mutation and evaluation
 methods are implemented on top of this interface. This code was used for
-experiments appearing in ASPLOS 2014.   
+experiments appearing in [ASPLOS 2014](/publications/index.html#asplos14).   
 * [Genetic Optimization
 Algorithm](https://github.com/eschulte/goa). This GOA implementation accepts an assembly 
 program with a workload and a fitness function (e.g., power consumption) and
 optimizes that fitness function. This source code was used for experiments
-appearing in ASPLOS 2014. 
+appearing in [ASPLOS 2014](/publications/index.html#asplos14). 
 * <a id="gpv1.0"></a>The experiments in ICSE 2009, GECCO 2009, GECCO 2010 and TSE 2012 used an older
 version of GenProg. A snapshot of that codebase is available:
 [GenProg v1.0](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz)
@@ -84,7 +84,7 @@ The ASPLOS 2013 paper includes results on the [Software-artifact Infrastructure
 Repository](http://sir.unl.edu/).
 
 **PARSEC**  
-The ASPLOS 2014 paper makes use of the [PARSEC](http://parsec.cs.princeton.edu/) benchmark.
+The [ASPLOS 2014](/publications/index.html#asplos14) paper makes use of the [PARSEC](http://parsec.cs.princeton.edu/) benchmark.
 
 
 ---
@@ -102,7 +102,7 @@ learning strategies to order test cases and repairs.
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-ase2013-results.zip)
 
 **ICSE 2012** ([Paper](/publications/index.html#icse12))  
-A systematic study of program repair.  These were conducted on AWS, using images
+A systematic study of program repair.  These experiments were conducted on AWS, using images
 that we have converted to VirtualBox format.  The READMEs also point to a
 publicly-available AMI.  Please use <a href="#manybugs">ManyBugs</a> for all
 future experiments.  
