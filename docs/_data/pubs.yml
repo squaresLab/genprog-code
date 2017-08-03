@@ -37,19 +37,19 @@
   doi: https://doi.org/10.1109/ASE.2013.6693094
   bibtex: weimer-ase13.bib
   code: https://github.com/squaresLab/genprog-code/tree/releases/v3.0
-  dataset: /experiments/index.html#icse12
+  dataset: /experiments.md#icse12
   results: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-ase2013-results.zip
   category: targetC
 
 - entry: "Claire Le Goues, Michael Dewey-Vogt, Stephanie Forrest, Westley Weimer. A Systematic Study of Automated Program Repair: Fixing 55 out of 105 bugs for $8 Each. International Conference on Software Engineering (ICSE), 2012."
-  note: "please use the more recent <a href=\"/experiments/index.html#manybugs\">ManyBugs dataset</a> for future experiments."
+  note: "please use the more recent <a href=\"/experiments.md#manybugs\">ManyBugs dataset</a> for future experiments."
   aid: icse12
   pdf: weimer-icse2012-genprog-preprint.pdf 
   doi: https://doi.org/10.1109/ICSE.2012.6227211
   bibtex: legoues-icse12.bib
   code: https://github.com/squaresLab/genprog-code/tree/releases/v2.0
   vm: http://dijkstra.cs.virginia.edu/genprog/resources/genprog_images
-  dataset: /experiments/index.html#icse12
+  dataset: /experiments.md#icse12
   results: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-icse2012-results.zip
   category: targetC
 
@@ -59,7 +59,7 @@
   doi: https://doi.org/10.1109/TSE.2011.104
   bibtex: legoues-tse12.bib
   code: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz
-  results: /experiments/index.html#tse12
+  results: /experiments.md#tse12
   category: targetC
 
 - entry: "Stephanie Forrest, Westley Weimer, ThanhVu Nguyen, Claire Le Goues. A Genetic Programming Approach to Automated Software Repair. Genetic and Evolutionary Computing Conference (GECCO), 2009 (best paper award) (gold, human-competitive award)."
@@ -77,7 +77,7 @@
   bibtex: nguyen-sbst09.bib
   category: targetC
 
-- entry: "Westley Weimer, ThanVu Nguyen, Claire Le Goues, Stephanie Forrest. Automatically Finding Patches Using Genetic Programming. International Conference on Software Engineering (ICSE), 2009 (distinguished paper award) (IFIP TC2 Manfred Paul award)."
+- entry: "Westley Weimer, ThanhVu Nguyen, Claire Le Goues, Stephanie Forrest. Automatically Finding Patches Using Genetic Programming. International Conference on Software Engineering (ICSE), 2009 (distinguished paper award) (IFIP TC2 Manfred Paul award)."
   pdf: weimer-icse2009-genprog.pdf
   doi: https://doi.org/10.1109/ICSE.2009.5070536
   bibtex: weimer-icse09.bib
@@ -120,7 +120,7 @@
   bibtex: legoues-gecco12.bib
   code: https://github.com/squaresLab/genprog-code/tree/releases/v2.0
   vm: http://dijkstra.cs.virginia.edu/genprog/resources/genprog_images
-  dataset: /experiments/index.html#icse12
+  dataset: /experiments.md#icse12
   results: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-gecco2012-results.tar.gz
   category: search
 
