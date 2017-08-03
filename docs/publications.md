@@ -140,7 +140,8 @@ Automated Repair of Binary and Assembly Programs for Cooperating Embedded
 Devices. Architectural Support for Programming Languages and Operating Systems
 (ASPLOS), 2013.  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/schulte2013embedded.pdf) 
-[BibTeX]() |
+[DOI](http://doi.acm.org/10.1145/2451116.2451151) 
+[BibTeX](https://squareslab.github.io/papers-repo/bib/schulte-asplos13.bib) |
 [Code, Dataset, and Results]()
 
 Eric Schulte, Stephanie Forrest, Westley Weimer. Automated Program Repair
