@@ -7,10 +7,10 @@ priority: 1
 ---
 
 GenProg is primarily a collaboration between three PIs:
-* [Westley Weimer](http://www.cs.virginia.edu/~weimer) at the University of Michigan - Ann Arbor
-* [Stephanie Forrest](http://www.cs.unm.edu/~forrest) at the
+* **[Westley Weimer](http://www.cs.virginia.edu/~weimer)** at the University of Michigan - Ann Arbor
+* **[Stephanie Forrest](http://www.cs.unm.edu/~forrest)** at the
 University of New Mexico
-*  [Claire Le&nbsp;Goues](http://www.cs.cmu.edu/~clegoues/) at Carnegie Mellon
+* **[Claire Le&nbsp;Goues](http://www.cs.cmu.edu/~clegoues/)** at Carnegie Mellon
 University. 
 
 
