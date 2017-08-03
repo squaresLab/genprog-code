@@ -14,6 +14,38 @@ generally, including papers that build upon or compare to GenProg.
 
 *This page is sorted topically.*
 
+
+---
+
+Broad overviews and high-level arguments
+-------------------------
+
+Claire Le Goues, Stephanie Forrest, Westley Weimer: Current Challenges in
+Automatic Software Repair. Software Quality Journal (SQJO), 2013.  
+[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-sqj-2013.pdf) 
+[DOI](https://doi.org/10.1007/s11219-013-9208-0) 
+[BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-sqjo13.bib)
+
+Westley Weimer: Advances in Automated Program Repair and a Call To
+Arms. Symposium on Search Based Software Engineering (SSBSE), 2013.  
+[Slides](https://squareslab.github.io/papers-repo/pdfs/weimer-ssbse2013-presentation.pdf) 
+[BibTeX](https://squareslab.github.io/papers-repo/bib/weimer-ssbse13.bib)
+
+Westley Weimer, Stephanie Forrest, Claire Le Goues, ThanhVu Nguyen: Automatic
+Program Repair With Evolutionary Computation. Communications of the ACM (CACM), 2010. 
+[PDF](https://squareslab.github.io/papers-repo/pdfs/p109-weimer.pdf) 
+[DOI](http://doi.acm.org/10.1145/1735223.1735249)
+[BibTeX](https://squareslab.github.io/papers-repo/bib/weimer-cacm10.bib)
+
+Claire Le Goues, Stephanie Forrest, Westley Weimer: The Case for Software
+Evolution. Foundations of Software Engineering Working Conference on the Future
+of Software Engineering (FoSER), at the International Symposium on Foundations
+of Software Engineering (FSE), 2010.  
+[PDF](https://squareslab.github.io/papers-repo/pdfs/p205-legoues.pdf) 
+[DOI](http://doi.acm.org/10.1145/1882362.1882406)
+[BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-foser10.bib)
+
+
 ---
 
 Automated Program Repair
@@ -40,17 +72,6 @@ Software Engineering (ASE), 2013.
 [Dataset](/experiments/index.html#icse12)
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-ase2013-results.zip)
 
-Claire Le Goues, Stephanie Forrest, Westley Weimer: Current Challenges in
-Automatic Software Repair. Software Quality Journal (SQJO), 2013.  
-[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-sqj-2013.pdf) 
-[DOI](https://doi.org/10.1007/s11219-013-9208-0) 
-[BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-sqjo13.bib)
-
-Westley Weimer: Advances in Automated Program Repair and a Call To
-Arms. Symposium on Search Based Software Engineering (SSBSE), 2013.  
-[Slides](https://squareslab.github.io/papers-repo/pdfs/weimer-ssbse2013-presentation.pdf) 
-[BibTeX](https://squareslab.github.io/papers-repo/bib/weimer-ssbse13.bib)
-
 <a id="icse12"></a>Claire Le Goues, Michael Dewey-Vogt, Stephanie Forrest, Westley Weimer: A
 Systematic Study of Automated Program Repair: Fixing 55 out of 105 bugs for $8
 Each. International Conference on Software Engineering (ICSE), 2012. **Note:
@@ -75,19 +96,6 @@ Generic Method for Automated Software Repair. IEEE Trans. Software Engineering
 [Dataset, Workloads, and Demo](/experiments/index.html#tse12)
 [Experimental Results]()
 
-Claire Le Goues, Stephanie Forrest, Westley Weimer: The Case for Software
-Evolution. Foundations of Software Engineering Working Conference on the Future
-of Software Engineering (FoSER), at the International Symposium on Foundations
-of Software Engineering (FSE), 2010.  
-[PDF](https://squareslab.github.io/papers-repo/pdfs/p205-legoues.pdf) 
-[DOI](http://doi.acm.org/10.1145/1882362.1882406)
-[BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-foser10.bib)
-
-Westley Weimer, Stephanie Forrest, Claire Le Goues, ThanhVu Nguyen: Automatic
-Program Repair With Evolutionary Computation. Communications of the ACM (CACM), 2010. 
-[PDF](https://squareslab.github.io/papers-repo/pdfs/p109-weimer.pdf) 
-[DOI](http://doi.acm.org/10.1145/1735223.1735249)
-[BibTeX](https://squareslab.github.io/papers-repo/bib/weimer-cacm10.bib)
 
 Stephanie Forrest, Westley Weimer, ThanhVu Nguyen, Claire Le Goues. A Genetic
 Programming Approach to Automated Software Repair. Genetic and Evolutionary
