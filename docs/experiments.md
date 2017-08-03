@@ -13,7 +13,18 @@ paper, so that others can reproduce or extend those experiments.
 
 ---
 
-Programs with bugs
+Code
+-------------------------
+
+The main GenProg repository is available on GitHub.  We tag releases
+corresponding to experiments in various papers, as follows.  
+
+<a id="gpv1.0"></a>The experiments in ICSE 2009, GECCO 2009, GECCO 2010 and TSE 2012 used an older
+version of GenProg. A snapshot of that codebase is available:
+[GenProg v1.0](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz)
+
+
+Subject Programs 
 -------------------------
 
 <a id="manybugs"></a>**ManyBugs and IntroClass** 
@@ -24,70 +35,84 @@ experimental results for GenProg, AE, and TRPAutoRepair.
 
 <a id="icse12"></a>**105 GenProg ICSE 2012 Program Bugs**  
 These scenarios and results were used for the systematic study on program repair published in ICSE 2012
-([Paper](/publications/index.html#icse12)), the Adaptive Equality
-repair algorithm (above), and the study of representation and operator choices
-in GECCO 2012 ([Paper](/publications/index.html#gecco12)).
+([Paper](/publications/index.html#icse12)), and the study of representation and
+operator choices in GECCO 2012 ([Paper](/publications/index.html#gecco12)).
 ***Note: these benchmarks are deprecated.*** We include these results for completeness,
-but we discourage their use in future work. Instead, the more recent TSE 2015
-extension (above) includes important corrections.  
+but we discourage their use in future work. Instead, the TSE 2015 benchmarks release
+(above) includes important corrections.  
 [Virtual Machine Images](http://dijkstra.cs.virginia.edu/genprog/resources/genprog_images)
-[Benchmarks](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-icse2012-benchmarks/)
+[Buggy Programs](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-icse2012-benchmarks/)
+
+<a id="tse12"></a>**TSE 2012 Bugs**
+These programs were used in the experiments in [this
+paper](/publications/index.html#tse12); they are a superset of the programs/bugs used
+in ICSE 2009 and GECCO 2009.  The virtual machine image demonstrates the wu-ftpd
+repair described in that article.  Instructions assume GenProg v1.0.  
+[Virtual Machine Images](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-tse2012-wuftpd.vdi)
+[VM Instructions](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-tse2012-wuftpd.txt)
+[Buggy Programs](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-tse-2012.tar.gz)
+[Workloads](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-tse2012-workload.tar.gz)
+
+**GECCO 2010**
+In GECCO 2010, we investigated alternative fitness functions for test-guided
+APR.  Instructions assume GenProg v1.0.  
+[Buggy Programs](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-2010.tar.gz)
+
+**2009 Buggy Programs**
+These experiments cover the GenProg publications in both ICSE 2009 and GECCO 2009.
+ Instructions assume GenProg v1.0.  
+[Buggy Programs](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-2009.tar.gz)
 
 Experimental results
 -------------------------
 
+### Automatic program repair:
 
 **ASE 2013** ([Paper](/publications/index.html#ase13))  
 These experiments relate to the Adaptive Equality repair algorithm that uses an
 approximation to program equivalence to reduce the search and introduces on-line
-learning strategies to order test cases and repairs. The experiments were
-conducted on the 105 ICSE 2012 program bugs (below).  
-[Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-ase2013-results.zip)
+learning strategies to order test cases and repairs.  
 [Code](https://github.com/squaresLab/genprog-code/tree/releases/v3.0)
+[Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-ase2013-results.zip)
 
-** ICSE 2012 **
-Systematic study of program repair
-[Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-icse2012-results.zip)
+**ICSE 2012** ([Paper](/publications/index.html#icse12))  
+A systematic study of program repair.  These were conducted on AWS, using images
+that we have converted to VirtualBox format.  The READMEs also point to a
+publicly-available AMI.  Please use <a href="#manybugs">ManyBugs</a> for all
+future experiments.  
 [Code](https://github.com/squaresLab/genprog-code/tree/releases/v2.0)
+[Virtual Machine Images](http://dijkstra.cs.virginia.edu/genprog/resources/genprog_images)
+[Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-icse2012-results.zip)
 
-**TSE 2012** ([Paper](/publications/index.html#tse12))
-These experiments used with an older version of GenProg featured in
-TSE 2012.  
+**TSE 2012** ([Paper](/publications/index.html#tse12))  
+These experiments used GenProg 1.0.  The virtual machine image demonstrates the wu-ftpd
+repair described in that article.  
 [Virtual Machine Images](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-tse2012-wuftpd.vdi)
-[Instructions](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-tse2012-wuftpd.txt)
-[Benchmarks](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-tse-2012.tar.gz)
-[Workloads](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-tse2012-workload.tar.gz)
-[Code](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz)
+[VM Instructions](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-tse2012-wuftpd.txt)
+[Results]()
 
 **ICSE/GECCO 2009:**  
-These experiments cover the GenProg publications in both ICSE 2009 and GECCO 2009.  
-[Benchmarks](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-2009.tar.gz)
+These results cover the GenProg publications in both ICSE 2009 and GECCO 2009.  
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-2009.tar.gz)
-[Code](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz)
 
 ---
 
 Search specifics:
 -----------------
 
-**SSBSE 2016:**  
-[FIXME]()
-
 **GECCO 2012:**  
 These include repair results for various genetic algorithm parameter values.  
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-gecco2012-results.tar.gz)
 
 **GECCO 2010:**  
-[Benchmarks](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-2010.tar.gz)
-[Code](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz)
+In GECCO 2010, we investigated alternative fitness functions for test-guided
+APR.  
+
 
 ---
 
 Patch quality, software robustness:
 -----------------------------------
-
-**ESEC/FSE 2015:**  
-[FIXME]()
 
 **GPEM 2013:**  
 These results relate to neutral mutants and software mutational
