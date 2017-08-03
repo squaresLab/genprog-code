@@ -21,11 +21,21 @@ researchers, without whom this project would not be possible:
 
 {% for person in site.data.people %} {% if person.visible == true %}
 {% if person.current == true %}
+{% if person.phd %}
+{% if person.url %}
+**[Dr. {{ person.name }}]({{ person.url }}):** {{ person.affiliation }}
+{% else %}
+**Dr. {{ person.name }}:** {{ person.affiliation }}
+{% endif %}{% endif %}{% endif %}{% endif %}{% endfor %}
+
+{% for person in site.data.people %} {% if person.visible == true %}
+{% if person.current == true %}
+{% if person.phd != true %}
 {% if person.url %}
 **[{{ person.name }}]({{ person.url }}):** {{ person.affiliation }}
 {% else %}
 **{{ person.name }}:** {{ person.affiliation }}
-{% endif %}{% endif %}{% endif %}{% endfor %}
+{% endif %}{% endif %}{% endif %}{% endif %}{% endfor %}
 
 ---
 
@@ -37,7 +47,7 @@ researchers, without whom this project would not be possible:
 {% if person.url %}
 **[Dr. {{ person.name }}]({{ person.url }}):** {{ person.affiliation }}
 {% else %}
-**{{ person.name }}:** {{ person.affiliation }}
+**Dr. {{ person.name }}:** {{ person.affiliation }}
 {% endif %}{% endif %}{% endif %}{% endif %}{% endfor %}
 
 {% for person in site.data.people %} {% if person.visible == true %}
