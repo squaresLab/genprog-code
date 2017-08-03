@@ -14,15 +14,15 @@ frameborder="0"
 allowfullscreen></iframe>
 </center>
 
-<p>This ICSE 2012 teaser video highlights GenProg repairing
-55 out of 105 bugs for $8 each: </p> 
+<p>This ICSE 2012 teaser video highlights GenProg <a href="/genprog-code/publications/index.html#icse12">repairing
+55 out of 105 bugs for $8 each</a>: </p> 
 
 <center>
 <iframe width="560" height="315" src="https://www.youtube.com/embed/Z3itydu_rjo"
 frameborder="0" allowfullscreen></iframe>
 </center>
 
-<p>This ISSTA 2012 teaser video highlights a human study of 
+<p>This <a href="/genprog-code/publications/index.html#issta12">ISSTA 2012</a> teaser video highlights a human study of 
 GenProg patch maintainability: </p> 
 <center>
 <iframe width="560" height="315" src="https://www.youtube.com/embed/OlvcDOputnA"

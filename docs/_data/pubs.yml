@@ -138,6 +138,7 @@
   category: robustness 
 
 - entry: "Zachary P. Fry, Bryan Landau, Westley Weimer: A Human Study of Patch Maintainability. International Symposium on Software Testing and Analysis (ISSTA), 2012."
+  aid: issta12
   pdf: FryISSTA12_PREPRINT.pdf
   doi: http://doi.acm.org/10.1145/2338965.2336775
   bibtex: fry-issta12.bib
