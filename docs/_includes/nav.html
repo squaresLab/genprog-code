@@ -23,11 +23,17 @@
                     <a href="{{ page.url | prepend: site.baseurl }}">{{ page.title }}</a>
                 </li>
                 {% endif %}{% endif %}{% endfor %}
-                {% for page in site.pages %}{% if page.url contains "projects/" %}{% else %}{% if page.title %}
+                <!-- Stupid way to make "People" appear first and the sort the rest alphabetically -->
+                {% for page in site.pages %}{% if page.url contains "projects/" %}{% else %}{% if page.url contains "people" %}{% if page.title %}
                 <li>
                     <a href="{{ page.url | prepend: site.baseurl }}">{{ page.title }}</a>
                 </li>
-                {% endif %}{% endif %}{% endfor %}
+                {% endif %}{% endif %}{% endif %}{% endfor %}
+                {% for page in site.pages %}{% if page.url contains "projects/" %}{% else %}{% if page.url contains "people" %}{% else %}{% if page.title %}
+                <li>
+                    <a href="{{ page.url | prepend: site.baseurl }}">{{ page.title }}</a>
+                </li>
+                {% endif %}{% endif %}{% endif %}{% endfor %}
                 <li>
                   <a href="https://github.com/squareslab/genprog-code">Repository</a>
                 </li>
