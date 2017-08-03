@@ -117,17 +117,17 @@ repair described in that article.
 [VM Instructions](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-tse2012-wuftpd.txt)
 [Results]()
 
-**ICSE/GECCO 2009:**  
+**ICSE/GECCO 2009**  
 These results cover the GenProg publications in both ICSE 2009 and GECCO 2009.  
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-2009.tar.gz)
 
 ### Search specifics
 
-**GECCO 2012:**  
+**GECCO 2012**  
 These include repair results for various genetic algorithm parameter values.  
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-gecco2012-results.tar.gz)
 
-**GECCO 2010:**  
+**GECCO 2010**  
 In GECCO 2010, we investigated alternative fitness functions for test-guided
 APR.  
 [Experimental Results]()
@@ -141,7 +141,7 @@ as well as the human responses.
 [Dataset](http://dijkstra.cs.virginia.edu/genprog/resources/issta2012-study-data.zip)
 
 
-**GPEM 2013:**  
+**GPEM 2013**  
 These results relate to neutral mutants and software mutational
 robustness. Experimental results
 for
@@ -155,13 +155,13 @@ also available.
 Non-functional or quality properties:
 -------------------------------------
 
-**ASPLOS 2014:**  
+**ASPLOS 2014**  
 These experiments use GenProg-like approaches to reduce the power consumption of
 software.  
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-asplos-2014.tar.bz2)
 [Code](https://github.com/eschulte/goa/tree/asplos2014)
 
-**ASPLOS 2013:**  
+**ASPLOS 2013**  
 These experiments relate to the automated repair of assembly and binaries in
 embedded systems.
 [Benchmarks](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-asplos-2013.tar.bz2)
