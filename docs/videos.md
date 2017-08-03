@@ -3,8 +3,7 @@ layout: page
 title: "Videos"
 description: "Videos and demonstrations"
 ---
-<p>Claire Le&nbsp;Goues' Fall 2016 talk at the Papers We Love conference on
-Automated Program Repair:</p>
+<p>Claire Le&nbsp;Goues' Fall 2016 talk on Automated Program Repair, at the [Papers We Love conference](pwlconf.org), co-located with [StrangeLoop](https://www.thestrangeloop.com/):</p>
 [Info](http://pwlconf.org/claire-legoues/) [Slides](http://bit.ly/2d13UGY) [Transcription](http://bit.ly/2diQXWP)
 <center>
 <iframe width="560" height="315" src="https://www.youtube.com/embed/sRkfMe0_5cA"
@@ -12,7 +11,7 @@ frameborder="0"
 allowfullscreen></iframe>
 </center>
 
-<p>This Summer 2012 teaser video highlights GenProg repairing
+<p>This ICSE 2012 teaser video highlights GenProg repairing
 55 out of 105 bugs for $8 each: </p> 
 
 <center>
@@ -20,7 +19,7 @@ allowfullscreen></iframe>
 frameborder="0" allowfullscreen></iframe>
 </center>
 
-<p>This Summer 2012 teaser video highlights a human study of 
+<p>This ISSTA 2012 teaser video highlights a human study of 
 GenProg patch maintainability: </p> 
 <center>
 <iframe width="560" height="315" src="https://www.youtube.com/embed/OlvcDOputnA"
