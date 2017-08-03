@@ -37,4 +37,5 @@ researchers, without whom this project would not be possible:
 
 ### Past researchers:
 
-{% for person in site.data.people %}{% if person.current != true and person.visible == true %} * **{% if person.url %}[{% if person.phd %}Dr. {% endif %}{{ person.name }}]({{ person.url }}){% else %}{% if person.phd %}Dr. {% endif %}{{ person.name }}{% endif %}:** {{ person.affiliation }}  {% endif %}  {% endfor %} 
+{% for person in site.data.people %}{% if person.current != true and person.visible == true %} 
+* **{% if person.url %}[{% if person.phd %}Dr. {% endif %}{{ person.name }}]({{ person.url }}){% else %}{% if person.phd %}Dr. {% endif %}{{ person.name }}{% endif %}:** {{ person.affiliation }}  {% endif %}  {% endfor %} 
