@@ -23,22 +23,22 @@ Claire Le Goues, Neal Holtschulte, Edward K. Smith, Yuriy Brun, Premkumar
 Devanbu, Stephanie Forrest, Westley Weimer: The ManyBugs and IntroClass
 Benchmarks for Automated Repair of C Programs. IEEE Transactions on Software
 Engineering 2015  
-[PDF](https://squareslab.github.io/papers-repo/pdfs/benchmarks-2015-tse-preprint.pdf) [BibTeX](legoues-tse15.bib)
+[PDF](https://squareslab.github.io/papers-repo/pdfs/benchmarks-2015-tse-preprint.pdf) [BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-tse15.bib)
 
 Claire Le Goues, Stephanie Forrest, Westley Weimer: Current Challenges in
 Automatic Software Repair. Software Quality Journal 21(3): 421-443 (2013)  
-[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-sqj-2013.pdf) [BibTeX](legoues-sqjo13.bib)
+[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-sqj-2013.pdf) [BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-sqjo13.bib)
 
 Claire Le Goues, Michael Dewey-Vogt, Stephanie Forrest, Westley Weimer: A
 Systematic Study of Automated Program Repair: Fixing 55 out of 105 bugs for $8
 Each. International Conference on Software Engineering (ICSE) 2012.  [Pointer to
 TSE 2015]  
-[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-icse2012-genprog-preprint.pdf) [BibTeX](legoues-icse12.bib)
+[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-icse2012-genprog-preprint.pdf) [BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-icse12.bib)
 
 Claire Le Goues, Stephanie Forrest, Westley Weimer: The Case for Software
 Evolution. Foundations of Software Engineering Working Conference on the Future
 of Software Engineering (FoSER) 2010: 205-209  
-[PDF](https://squareslab.github.io/papers-repo/pdfs/p205-legoues.pdf) [BibTeX](legoues-foser10.bib)
+[PDF](https://squareslab.github.io/papers-repo/pdfs/p205-legoues.pdf) [BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-foser10.bib)
 
 Westley Weimer, Stephanie Forrest, Claire Le Goues, ThanhVu Nguyen: Automatic
 Program Repair With Evolutionary Computation. Communications of the ACM Vol. 53
