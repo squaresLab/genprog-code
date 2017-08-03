@@ -24,10 +24,12 @@ version of GenProg. A snapshot of that codebase is available:
 [GenProg v1.0](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz)
 
 
+---
+
 Subject Programs 
 -------------------------
 
-<a id="manybugs"></a>**ManyBugs and IntroClass** 
+<a id="manybugs"></a>**ManyBugs and IntroClass**  
 The [RepairBenchmarks website](http://repairbenchmarks.cs.umass.edu/) contains
 detailed information on the ManyBugs and IntroClass benchmarks, described in
 detail in [TSE 2015](/publications/index.html#tse15), including the baseline
@@ -43,7 +45,7 @@ but we discourage their use in future work. Instead, the TSE 2015 benchmarks rel
 [Virtual Machine Images](http://dijkstra.cs.virginia.edu/genprog/resources/genprog_images)
 [Buggy Programs](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-icse2012-benchmarks/)
 
-<a id="tse12"></a>**TSE 2012 Bugs**
+<a id="tse12"></a>**TSE 2012 Bugs**  
 These programs were used in the experiments in [this
 paper](/publications/index.html#tse12); they are a superset of the programs/bugs used
 in ICSE 2009 and GECCO 2009.  The virtual machine image demonstrates the wu-ftpd
@@ -53,20 +55,30 @@ repair described in that article.  Instructions assume GenProg v1.0.
 [Buggy Programs](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-tse-2012.tar.gz)
 [Workloads](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-tse2012-workload.tar.gz)
 
-**GECCO 2010**
+**GECCO 2010**  
 In GECCO 2010, we investigated alternative fitness functions for test-guided
 APR.  Instructions assume GenProg v1.0.  
 [Buggy Programs](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-2010.tar.gz)
 
-**2009 Buggy Programs**
+**2009 Buggy Programs**  
 These experiments cover the GenProg publications in both ICSE 2009 and GECCO 2009.
  Instructions assume GenProg v1.0.  
 [Buggy Programs](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-2009.tar.gz)
 
+**SIR**  
+The ASPLOS 2013 paper includes results on the [Software-artifact Infrastructure
+Repository](http://sir.unl.edu/).
+
+**PARSEC**  
+The ASPLOS 2014 paper makes use of the [PARSEC](http://parsec.cs.princeton.edu/) benchmark.
+
+
+---
+
 Experimental results
 -------------------------
 
-### Automatic program repair:
+### Automatic program repair
 
 **ASE 2013** ([Paper](/publications/index.html#ase13))  
 These experiments relate to the Adaptive Equality repair algorithm that uses an
@@ -95,10 +107,15 @@ repair described in that article.
 These results cover the GenProg publications in both ICSE 2009 and GECCO 2009.  
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-2009.tar.gz)
 
----
+### Human study data
 
-Search specifics:
------------------
+**ISSTA 2012**  
+This dataset includes the subject code and questions presented to humans,
+as well as the human responses.  
+[Dataset](http://dijkstra.cs.virginia.edu/genprog/resources/issta2012-study-data.zip)
+
+
+### Search specifics
 
 **GECCO 2012:**  
 These include repair results for various genetic algorithm parameter values.  
@@ -107,11 +124,12 @@ These include repair results for various genetic algorithm parameter values.
 **GECCO 2010:**  
 In GECCO 2010, we investigated alternative fitness functions for test-guided
 APR.  
+[Experimental Results]()
 
 
 ---
 
-Patch quality, software robustness:
+Software robustness:
 -----------------------------------
 
 **GPEM 2013:**  
@@ -119,14 +137,9 @@ These results relate to neutral mutants and software mutational
 robustness. Experimental results
 for
 [higher order neutral mutants](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-gpem-2013-higher-order.tar.bz2) are
-also
-available.
-[Benchmarks](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-gpem-2013.tar.gz2) [Sorting Programs](https://github.com/eschulte/sorters) [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-gpem-2013.tar.gz)
-
-**ISSTA 2012:**  
-This dataset includes the subject code and questions presented to humans,
-as well as the human responses.  
-[Dataset](http://dijkstra.cs.virginia.edu/genprog/resources/issta2012-study-data.zip)
+also available.
+[Benchmarks](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-gpem-2013.tar.gz2) 
+[Sorting Programs](https://github.com/eschulte/sorters) [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-gpem-2013.tar.gz)
 
 ---
 
