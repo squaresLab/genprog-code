@@ -11,7 +11,7 @@ over time, there is no single all-inclusive package. Instead, for major papers,
 we try to make available a snapshot of the programs and benchmarks used in that
 paper, so that others can reproduce or extend those experiments.
 
-*This page is sorted topically:*
+*This page is sorted topically*
 
 ---
 
@@ -23,11 +23,16 @@ These are the ManyBugs and IntroClass benchmarks published in
 TSE 2015. The [main website](http://repairbenchmarks.cs.umass.edu/) contains
 detailed information on the scenarios and results of the experiments.
 
+**ASE 2013**  
+These experiments relate to the Adaptive Equality repair algorithm
+[Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-ase2013-results.zip)
+[Code](https://github.com/squaresLab/genprog-code/tree/releases/v3.0)
+
 **ICSE 2012:**  
 These experiments were used for the paper published in ICSE 2012.  
-***Note: these are depreciated.*** We include these results for completeness,
+***Note: these are deprecated.*** We include these results for completeness,
 but we discourage their use in future work. Instead, the more recent TSE 2015
-extension includes important corrections.  
+extension (above) includes important corrections.  
 [Virtual Machine Images](http://dijkstra.cs.virginia.edu/genprog/resources/genprog_images)
 [Benchmarks](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-icse2012-benchmarks/)
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-icse2012-results.zip)
@@ -103,7 +108,3 @@ embedded systems.
 [Benchmarks](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-asplos-2013.tar.bz2)
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-asplos-2013.tar.bz2)
 
-**ASE 2013**  
-These experiments relate to the Adaptive Equality repair algorithm
-[Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-ase2013-results.zip)
-[Code](https://github.com/squaresLab/genprog-code/tree/releases/v3.0)
