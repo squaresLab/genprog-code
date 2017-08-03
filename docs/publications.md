@@ -19,25 +19,35 @@ generally, including papers that build upon or compare to GenProg.
 Automated Program Repair:
 -------------------------
 
-Claire Le Goues, Neal Holtschulte, Edward K. Smith, Yuriy Brun, Premkumar
+<a id="tse15"></a>Claire Le Goues, Neal Holtschulte, Edward K. Smith, Yuriy Brun, Premkumar
 Devanbu, Stephanie Forrest, Westley Weimer: The ManyBugs and IntroClass
 Benchmarks for Automated Repair of C Programs. IEEE Transactions on Software
-Engineering 2015  
+Engineering (TSE), 2015 (featured article).  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/benchmarks-2015-tse-preprint.pdf) [DOI](https://doi.org/10.1109/TSE.2015.2454513) [BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-tse15.bib)
 
+<a id="ase13"></a>Westley Weimer, Zachary P. Fry, Stephanie Forrest: Leveraging Program
+Equivalence for Adaptive Program Repair: Models and First Results. Automated
+Software Engineering (ASE), 2013.  
+[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-ase2013-preprint.pdf) [DOI]() [BibTeX]()
+
 Claire Le Goues, Stephanie Forrest, Westley Weimer: Current Challenges in
-Automatic Software Repair. Software Quality Journal 21(3): 421-443 (2013)  
+Automatic Software Repair. Software Quality Journal (SQJO), 2013.  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-sqj-2013.pdf) [DOI](https://doi.org/10.1007/s11219-013-9208-0) [BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-sqjo13.bib)
 
-Claire Le Goues, Michael Dewey-Vogt, Stephanie Forrest, Westley Weimer: A
+<a id="icse12"></a>Claire Le Goues, Michael Dewey-Vogt, Stephanie Forrest, Westley Weimer: A
 Systematic Study of Automated Program Repair: Fixing 55 out of 105 bugs for $8
-Each. International Conference on Software Engineering (ICSE) 2012.  [Pointer to
-TSE 2015] [DOI](https://doi.org/10.1109/ICSE.2012.6227211)
-[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-icse2012-genprog-preprint.pdf) [BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-icse12.bib)
+Each. International Conference on Software Engineering (ICSE), 2012.  [Pointer to TSE 2015]  
+[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-icse2012-genprog-preprint.pdf)
+[DOI](https://doi.org/10.1109/ICSE.2012.6227211)
+[BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-icse12.bib)
+
+<a id="tse12"></a>Claire Le Goues, ThanhVu Nguyen, Stephanie Forrest, Westley Weimer: GenProg: A
+Generic Method for Automated Software Repair. IEEE Trans. Software Engineering (TSE), 2012 (featured article).  
+[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-tse2012-genprog.pdf) [DOI] [BibTeX]()
 
 Claire Le Goues, Stephanie Forrest, Westley Weimer: The Case for Software
 Evolution. Foundations of Software Engineering Working Conference on the Future
-of Software Engineering (FoSER) 2010: 205-209  
+of Software Engineering (FoSER), at the International Symposium on Foundations of Software Engineering (FSE), 2010.  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/p205-legoues.pdf) [BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-foser10.bib)
 
 Westley Weimer, Stephanie Forrest, Claire Le Goues, ThanhVu Nguyen: Automatic
@@ -54,11 +64,6 @@ Programming Approach to Automated Software Repair. Genetic and Evolutionary
 Computing Conference (GECCO) 2009: 947-954 (best paper award) (gold
 human-competitive award)  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-gecco2009.pdf) [BibTeX]()
-
-Claire Le Goues, ThanhVu Nguyen, Stephanie Forrest, Westley Weimer: GenProg: A
-Generic Method for Automated Software Repair. IEEE Trans. Software Engineering
-38(1): 54-72 (January/February 2012) (featured paper award)  
-[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-tse2012-genprog.pdf) [BibTeX]()
 
 ThanhVu Nguyen, Westley Weimer, Claire Le Goues, Stephanie Forrest. Using
 Execution Paths to Evolve Software Patches. Workshop on Search-Based Software
@@ -143,8 +148,3 @@ Pitchaya Sitthi-amorn, Nicholas Modly, Westley Weimer, Jason Lawrence: Genetic
 Programming for Shader Simplification. ACM Transactions on Graphics
 (Proc. SIGGRAPH Asia) 30(6): 152 (2011)  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/sitthiamorn_siga11.pdf) [BibTeX]()
-
-Westley Weimer, Zachary P. Fry, Stephanie Forrest: Leveraging Program
-Equivalence for Adaptive Program Repair: Models and First Results. Automated
-Software Engineering (ASE) 2013.  
-[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-ase2013-preprint.pdf) [BibTeX]()

@@ -18,19 +18,25 @@ paper, so that others can reproduce or extend those experiments.
 Automated Program Repair:
 -------------------------
 
-**TSE 2015:**  
-These are the ManyBugs and IntroClass benchmarks published in
-TSE 2015. The [main website](http://repairbenchmarks.cs.umass.edu/) contains
-detailed information on the scenarios and results of the experiments.
+**TSE 2015** ([Paper](/publications/index.html#tse15))  
+The [RepairBenchmarks website](http://repairbenchmarks.cs.umass.edu/) contains
+detailed information on the ManyBugs and IntroClass benchmarks, as well as the baseline
+experimental results described in the article.
 
-**ASE 2013**  
-These experiments relate to the Adaptive Equality repair algorithm
+**ASE 2013** ([Paper](/publications/index.html#ase13))  
+These experiments relate to the Adaptive Equality repair algorithm that uses an
+approximation to program equivalence to reduce the search and introduces on-line
+learning strategies to order test cases and repairs. The experiments were
+conducted on the 105 ICSE 2012 program bugs (below).  
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-ase2013-results.zip)
 [Code](https://github.com/squaresLab/genprog-code/tree/releases/v3.0)
 
-**ICSE 2012:**  
-These experiments were used for the paper published in ICSE 2012.  
-***Note: these are deprecated.*** We include these results for completeness,
+**105 GenProg ICSE 2012 Program Bugs**  
+These scenarios and results were used for the systematic study on program repair published in ICSE 2012
+([Paper](/publications/index.html#icse12)), the Adaptive Equality
+repair algorithm (above), and the study of representation and operator choices
+in GECCO 2012 ([Paper](/publications/index.html#gecco12)).
+***Note: these benchmarks are deprecated.*** We include these results for completeness,
 but we discourage their use in future work. Instead, the more recent TSE 2015
 extension (above) includes important corrections.  
 [Virtual Machine Images](http://dijkstra.cs.virginia.edu/genprog/resources/genprog_images)
@@ -38,8 +44,8 @@ extension (above) includes important corrections.
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-icse2012-results.zip)
 [Code](https://github.com/squaresLab/genprog-code/tree/releases/v2.0)
 
-**TSE 2012:**  
-These experiments were used with an older version of GenProg featured in
+**TSE 2012** ([Paper](/publications/index.html#tse12))
+These experiments used with an older version of GenProg featured in
 TSE 2012.  
 [Virtual Machine Images](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-tse2012-wuftpd.vdi)
 [Instructions](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-tse2012-wuftpd.txt)
