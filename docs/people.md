@@ -7,10 +7,10 @@ priority: 1
 ---
 
 GenProg is primarily a collaboration between three PIs:
-* <img src="/genprog-code/img/weimer.jpg" width="100" /> [Westley Weimer](http://www.cs.virginia.edu/~weimer) at the University of Michigan - Ann Arbor
-* <img src="/genprog-code/img/steph.jpg" width="100" /> [Stephanie Forrest](http://www.cs.unm.edu/~forrest) at the
+* [Westley Weimer](http://www.cs.virginia.edu/~weimer) at the University of Michigan - Ann Arbor
+* [Stephanie Forrest](http://www.cs.unm.edu/~forrest) at the
 University of New Mexico
-* <img src="/genprog-code/img/clg.jpg" width="100" /> [Claire Le&nbsp;Goues](http://www.cs.cmu.edu/~clegoues/) at Carnegie Mellon
+*  [Claire Le&nbsp;Goues](http://www.cs.cmu.edu/~clegoues/) at Carnegie Mellon
 University. 
 
 
