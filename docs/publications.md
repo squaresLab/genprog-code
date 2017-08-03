@@ -23,12 +23,21 @@ Automated Program Repair:
 Devanbu, Stephanie Forrest, Westley Weimer: The ManyBugs and IntroClass
 Benchmarks for Automated Repair of C Programs. IEEE Transactions on Software
 Engineering (TSE), 2015 (featured article).  
-[PDF](https://squareslab.github.io/papers-repo/pdfs/benchmarks-2015-tse-preprint.pdf) [DOI](https://doi.org/10.1109/TSE.2015.2454513) [BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-tse15.bib)
+[PDF](https://squareslab.github.io/papers-repo/pdfs/benchmarks-2015-tse-preprint.pdf) 
+[DOI](https://doi.org/10.1109/TSE.2015.2454513) 
+[BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-tse15.bib) | 
+[Dataset, Code, and Results](http://repairbenchmarks.cs.umass.edu/)
 
 <a id="ase13"></a>Westley Weimer, Zachary P. Fry, Stephanie Forrest: Leveraging Program
 Equivalence for Adaptive Program Repair: Models and First Results. Automated
 Software Engineering (ASE), 2013.  
-[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-ase2013-preprint.pdf) [DOI]() [BibTeX]()
+[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-ase2013-preprint.pdf) 
+[DOI]() 
+[BibTeX]() | 
+[Dataset](/experiments/index.html#icse12)
+[Code](https://github.com/squaresLab/genprog-code/tree/releases/v3.0)
+[Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-ase2013-results.zip)
+
 
 Claire Le Goues, Stephanie Forrest, Westley Weimer: Current Challenges in
 Automatic Software Repair. Software Quality Journal (SQJO), 2013.  
@@ -36,10 +45,17 @@ Automatic Software Repair. Software Quality Journal (SQJO), 2013.
 
 <a id="icse12"></a>Claire Le Goues, Michael Dewey-Vogt, Stephanie Forrest, Westley Weimer: A
 Systematic Study of Automated Program Repair: Fixing 55 out of 105 bugs for $8
-Each. International Conference on Software Engineering (ICSE), 2012.  [Pointer to TSE 2015]  
+Each. International Conference on Software Engineering (ICSE), 2012. **Note:
+please use the more recent <a href="/experiments/index.html#manybugs">ManyBugs
+dataset</a> for future experiments.**  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-icse2012-genprog-preprint.pdf)
 [DOI](https://doi.org/10.1109/ICSE.2012.6227211)
-[BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-icse12.bib)
+[BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-icse12.bib) | 
+[Virtual Machine Images](http://dijkstra.cs.virginia.edu/genprog/resources/genprog_images)
+[Dataset](/experiments/index.html#icse12)
+[Code](https://github.com/squaresLab/genprog-code/tree/releases/v2.0)
+[Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-icse2012-results.zip)
+
 
 <a id="tse12"></a>Claire Le Goues, ThanhVu Nguyen, Stephanie Forrest, Westley Weimer: GenProg: A
 Generic Method for Automated Software Repair. IEEE Trans. Software Engineering (TSE), 2012 (featured article).  

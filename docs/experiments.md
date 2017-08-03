@@ -11,27 +11,18 @@ over time, there is no single all-inclusive package. Instead, for major papers,
 we try to make available a snapshot of the programs and benchmarks used in that
 paper, so that others can reproduce or extend those experiments.
 
-*This page is sorted topically*
-
 ---
 
-Automated Program Repair:
+Programs with bugs
 -------------------------
 
-**TSE 2015** ([Paper](/publications/index.html#tse15))  
+<a id="manybugs"></a>**ManyBugs and IntroClass** 
 The [RepairBenchmarks website](http://repairbenchmarks.cs.umass.edu/) contains
-detailed information on the ManyBugs and IntroClass benchmarks, as well as the baseline
-experimental results described in the article.
+detailed information on the ManyBugs and IntroClass benchmarks, described in
+detail in [TSE 2015](/publications/index.html#tse15), including the baseline
+experimental results for GenProg, AE, and TRPAutoRepair.
 
-**ASE 2013** ([Paper](/publications/index.html#ase13))  
-These experiments relate to the Adaptive Equality repair algorithm that uses an
-approximation to program equivalence to reduce the search and introduces on-line
-learning strategies to order test cases and repairs. The experiments were
-conducted on the 105 ICSE 2012 program bugs (below).  
-[Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-ase2013-results.zip)
-[Code](https://github.com/squaresLab/genprog-code/tree/releases/v3.0)
-
-**105 GenProg ICSE 2012 Program Bugs**  
+<a id="icse12"></a>**105 GenProg ICSE 2012 Program Bugs**  
 These scenarios and results were used for the systematic study on program repair published in ICSE 2012
 ([Paper](/publications/index.html#icse12)), the Adaptive Equality
 repair algorithm (above), and the study of representation and operator choices
@@ -41,6 +32,21 @@ but we discourage their use in future work. Instead, the more recent TSE 2015
 extension (above) includes important corrections.  
 [Virtual Machine Images](http://dijkstra.cs.virginia.edu/genprog/resources/genprog_images)
 [Benchmarks](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-icse2012-benchmarks/)
+
+Experimental results
+-------------------------
+
+
+**ASE 2013** ([Paper](/publications/index.html#ase13))  
+These experiments relate to the Adaptive Equality repair algorithm that uses an
+approximation to program equivalence to reduce the search and introduces on-line
+learning strategies to order test cases and repairs. The experiments were
+conducted on the 105 ICSE 2012 program bugs (below).  
+[Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-ase2013-results.zip)
+[Code](https://github.com/squaresLab/genprog-code/tree/releases/v3.0)
+
+** ICSE 2012 **
+Systematic study of program repair
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-icse2012-results.zip)
 [Code](https://github.com/squaresLab/genprog-code/tree/releases/v2.0)
 
