@@ -3,7 +3,10 @@ layout: page
 title: "Videos"
 description: "Videos and demonstrations"
 ---
-<p>Claire Le&nbsp;Goues' Fall 2016 talk on Automated Program Repair, at the [Papers We Love conference](pwlconf.org), co-located with [StrangeLoop](https://www.thestrangeloop.com/):</p>
+
+Claire Le&nbsp;Goues' Fall 2016 talk on Automated Program Repair, at the [Papers
+We Love conference](http://pwlconf.org), co-located with
+[StrangeLoop](https://www.thestrangeloop.com/):  
 [Info](http://pwlconf.org/claire-legoues/) [Slides](http://bit.ly/2d13UGY) [Transcription](http://bit.ly/2diQXWP)
 <center>
 <iframe width="560" height="315" src="https://www.youtube.com/embed/sRkfMe0_5cA"

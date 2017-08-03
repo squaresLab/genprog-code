@@ -1,0 +1,166 @@
+# Pubs
+
+- entry: "Claire Le Goues, Stephanie Forrest, Westley Weimer. Current Challenges in Automatic Software Repair. Software Quality Journal (SQJO), 2013."
+  pdf: weimer-sqj-2013.pdf
+  doi: https://doi.org/10.1007/s11219-013-9208-0
+  bibtex: legoues-sqjo13.bib
+  category: broad
+
+- entry: "Westley Weimer. Advances in Automated Program Repair and a Call To Arms. Symposium on Search Based Software Engineering (SSBSE), 2013."
+  pdf: weimer-ssbse2013-presentation.pdf
+  bibtex: weimer-ssbse13.bib
+  category: broad
+
+- entry: "Westley Weimer, Stephanie Forrest, Claire Le Goues, ThanhVu Nguyen. Automatic Program Repair With Evolutionary Computation. Communications of the ACM (CACM), 2010."
+  pdf: p109-weimer.pdf
+  doi: http://doi.acm.org/10.1145/1735223.1735249
+  bibtex: weimer-cacm10.bib
+  category: broad
+
+- entry: "Claire Le Goues, Stephanie Forrest, Westley Weimer. The Case for Software Evolution. Foundations of Software Engineering Working Conference on the Future of Software Engineering (FoSER), at the International Symposium on Foundations of Software Engineering (FSE), 2010."
+  pdf: p205-legoues.pdf
+  doi: http://doi.acm.org/10.1145/1882362.1882406
+  bibtex: legoues-foser10.bib
+  category: broad
+
+- entry: "Claire Le Goues, Neal Holtschulte, Edward K. Smith, Yuriy Brun, Premkumar Devanbu, Stephanie Forrest, Westley Weimer. The ManyBugs and IntroClass Benchmarks for Automated Repair of C Programs. IEEE Transactions on Software Engineering (TSE), 2015 (featured article)."
+  aid: tse15
+  pdf: benchmarks-2015-tse-preprint.pdf
+  doi: https://doi.org/10.1109/TSE.2015.2454513
+  bibtex: legoues-tse15.bib
+  category: targetC
+  site: http://repairbenchmarks.cs.umass.edu/
+
+- entry: "Westley Weimer, Zachary P. Fry, Stephanie Forrest: Leveraging Program Equivalence for Adaptive Program Repair: Models and First Results. Automated Software Engineering (ASE), 2013."
+  aid: ase13
+  pdf: weimer-ase2013-preprint.pdf
+  doi: https://doi.org/10.1109/ASE.2013.6693094
+  bibtex: weimer-ase13.bib
+  code: https://github.com/squaresLab/genprog-code/tree/releases/v3.0
+  dataset: /experiments/index.html#icse12
+  results: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-ase2013-results.zip
+  category: targetC
+
+- entry: "Claire Le Goues, Michael Dewey-Vogt, Stephanie Forrest, Westley Weimer. A Systematic Study of Automated Program Repair: Fixing 55 out of 105 bugs for $8 Each. International Conference on Software Engineering (ICSE), 2012."
+  note: "please use the more recent <a href=\"/experiments/index.html#manybugs\">ManyBugs dataset</a> for future experiments."
+  aid: icse12
+  pdf: weimer-icse2012-genprog-preprint.pdf 
+  doi: https://doi.org/10.1109/ICSE.2012.6227211
+  bibtex: legoues-icse12.bib
+  code: https://github.com/squaresLab/genprog-code/tree/releases/v2.0
+  vm: http://dijkstra.cs.virginia.edu/genprog/resources/genprog_images
+  dataset: /experiments/index.html#icse12
+  results: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-icse2012-results.zip
+  category: targetC
+
+- entry: "Claire Le Goues, ThanhVu Nguyen, Stephanie Forrest, Westley Weimer. GenProg: A Generic Method for Automated Software Repair. IEEE Trans. Software Engineering (TSE), 2012 (featured article)."
+  aid: tse12
+  pdf: weimer-tse2012-genprog.pdf
+  doi: https://doi.org/10.1109/TSE.2011.104
+  bibtex: legoues-tse12.bib
+  code: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz
+  results: /experiments/index.html#tse12
+  category: targetC
+
+- entry: "Stephanie Forrest, Westley Weimer, ThanhVu Nguyen, Claire Le Goues. A Genetic Programming Approach to Automated Software Repair. Genetic and Evolutionary Computing Conference (GECCO), 2009 (best paper award) (gold, human-competitive award)."
+  pdf: weimer-gecco2009.pdf
+  doi: http://doi.acm.org/10.1145/1569901.1570031
+  bibtex: forrest-gecco10.bib
+  code: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz
+  dataset: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-2009.tar.gz
+  results: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-2009.tar.gz
+  category: targetC
+
+- entry: "ThanhVu Nguyen, Westley Weimer, Claire Le Goues, Stephanie Forrest. Using Execution Paths to Evolve Software Patches. Workshop on Search-Based Software Testing (SBST) 2009 (best short paper award) (best presentation award)."
+  pdf: nguyen-sbst09.pdf
+  doi: http://doi.acm.org/10.1145/1882362.1882406
+  bibtex: nguyen-sbst09.bib
+  category: targetC
+
+- entry: "Westley Weimer, ThanVu Nguyen, Claire Le Goues, Stephanie Forrest. Automatically Finding Patches Using Genetic Programming. International Conference on Software Engineering (ICSE), 2009 (distinguished paper award) (IFIP TC2 Manfred Paul award)."
+  pdf: weimer-icse2009-genprog.pdf
+  doi: https://doi.org/10.1109/ICSE.2009.5070536
+  bibtex: weimer-icse09.bib
+  code: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz
+  dataset: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-2009.tar.gz
+  results: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-2009.tar.gz
+  category: targetC
+
+- entry: "Eric M. Schulte, Westley Weimer, Stephanie Forrest. Repairing COTS Router Firmware without Access to Source Code or Test Suites: A Case Study in Evolutionary Software Repair, GECCO Companion, 2015."
+  pdf: schulte-gecco15.pdf
+  doi: http://doi.acm.org/10.1145/2739482.2768427
+  bibtex: schulte-gecco15.bib
+  site: ""
+  category: asm
+
+- entry: "Eric Schulte, Jonathan DiLorenzo, Stephanie Forrest and Westley Weimer.  Automated Repair of Binary and Assembly Programs for Cooperating Embedded Devices. Architectural Support for Programming Languages and Operating Systems (ASPLOS), 2013."
+  aid: asplos13
+  pdf: schulte2013embedded.pdf
+  doi: http://doi.acm.org/10.1145/2451116.2451151
+  bibtex: schulte-asplos13.bib
+  site: ""
+  category: asm
+
+- entry: "Eric Schulte, Stephanie Forrest, Westley Weimer. Automated Program Repair through the Evolution of Assembly Code. Automated Software Engineering (ASE, Short Paper), 2010."
+  pdf: weimer-ase2010-asm-preprint.pdf
+  doi: http://doi.acm.org/10.1145/1858996.1859059
+  bibtex: schulte-ase10.bib
+  site: ""
+  category: asm
+
+- entry: "Vinicius Paulo L. Oliveira, Eduardo F. D. Souza, Claire Le Goues, and Celso G. Camilo-Junior. Improved Crossover Operators for Genetic Programming for Program Repair. In Proceedings of the 8th International Symposium on Search Based Software Engineering (SSBSE), 2016."
+  pdf: legoues-ssbse16.pdf
+  doi: https://doi.org/10.1007/978-3-319-47106-8_8
+  bibtex: oliveira-ssbse16.bib
+  category: search
+
+- entry: "Claire Le Goues, Westley Weimer, Stephanie Forrest. Representations and Operators for Improving Evolutionary Software Repair. Genetic and Evolutionary Computing Conference (GECCO), 2012."
+  pdf: genprog-gecco2012-preprint.pdf
+  doi: http://doi.acm.org/10.1145/2330163.2330296
+  bibtex: legoues-gecco12.bib
+  code: https://github.com/squaresLab/genprog-code/tree/releases/v2.0
+  vm: http://dijkstra.cs.virginia.edu/genprog/resources/genprog_images
+  dataset: /experiments/index.html#icse12
+  results: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-gecco2012-results.tar.gz
+  category: search
+
+- entry: "Ethan Fast, Claire Le Goues, Stephanie Forrest, Westley Weimer. Designing better fitness functions for automated program repair. Genetic and Evolutionary Computing Conference (GECCO), 2010."
+  pdf: weimer-gecco2010.pdf
+  doi: http://doi.acm.org/10.1145/1830483.1830654
+  bibtex: fast-gecco10.bib
+  site: ""
+  category: search
+
+- entry: "Edward K. Smith, Earl Barr, Claire Le Goues, and Yuriy Brun, Is the Cure Worse than the Disease? Overfitting in Automated Program Repair, in Proceedings of the 10th Joint Meeting of the European Software Engineering Conference and ACM SIGSOFT Symposium on the Foundations of Software Engineering (ESEC/FSE '15), 2015."
+  pdf: smith15fse.pdf
+  doi: ""
+  bibtex: smith-esecfse15.bib
+  category: robustness 
+
+- entry: "Zachary P. Fry, Bryan Landau, Westley Weimer: A Human Study of Patch Maintainability. International Symposium on Software Testing and Analysis (ISSTA), 2012."
+  pdf: FryISSTA12_PREPRINT.pdf
+  doi: ""
+  bibtex: ""
+  category: robustness
+
+- entry: "Eric Schulte, Zachary P. Fry, Ethan Fast, Westley Weimer, Stephanie Forrest. Software Mutational Robustness. Journ. Genetic Programming and Evolvable Machines (GEPM), 2013."
+  pdf: weimer-gpem2013-robust.pdf
+  doi: ""
+  bibtex: ""
+  category: robustness
+
+- entry: "Adam Brady, Jason Lawrence, Pieter Peers, Westley Weimer. genBRDF: Discovering New analytic BRDFs with Genetic Programming. ACM Transactions on Graphics (Proc. SIGGRAPH), 2014."
+  pdf: brady-siggraph2014.pdf
+  bibtex: ""
+  category: qprop
+
+- entry: "Eric Schulte, Jonathan Dorn, Stephen Harding, Stephanie Forrest, Westley Weimer. Post-compiler Software Optimization for Reducing Energy. Architectural Support for Programming Languages and Operating Systems (ASPLOS), 2014."
+  aid: asplos14
+  pdf: schulte-asplos2014.pdf
+  bibtex: ""
+  category: qprop
+
+- entry: "Pitchaya Sitthi-amorn, Nicholas Modly, Westley Weimer, Jason Lawrence. Genetic Programming for Shader Simplification. ACM Transactions on Graphics (Proc. SIGGRAPH Asia), 2011"
+  pdf: sitthiamorn_siga11.pdf
+  bibtex: ""
+  category: qprop
