@@ -28,6 +28,14 @@ Engineering (TSE), 2015 (featured article).
 [BibTeX](https://squareslab.github.io/papers-repo/bib/legoues-tse15.bib) | 
 [Code, Dataset, and Results](http://repairbenchmarks.cs.umass.edu/)
 
+Eric M. Schulte, Westley Weimer, Stephanie Forrest: Repairing COTS Router
+Firmware without Access to Source Code or Test Suites: A Case Study in
+Evolutionary Software Repair, GECCO Companion, 2015.
+[PDF]()
+[DOI]()
+[BibTex]() |
+[Code, Dataset, and Results] ()
+
 <a id="ase13"></a>Westley Weimer, Zachary P. Fry, Stephanie Forrest: Leveraging Program
 Equivalence for Adaptive Program Repair: Models and First Results. Automated
 Software Engineering (ASE), 2013.  
@@ -74,9 +82,11 @@ Generic Method for Automated Software Repair. IEEE Trans. Software Engineering
 [Experimental Results]()
 
 Eric Schulte, Stephanie Forrest, Westley Weimer: Automated Program Repair
-through the Evolution of Assembly Code. Automated Software Engineering (ASE)
-Short Paper 2010: 313-316  
-[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-ase2010-asm-preprint.pdf) [BibTeX]()
+through the Evolution of Assembly Code. Automated Software Engineering (ASE,
+Short Paper), 2010.  
+[PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-ase2010-asm-preprint.pdf) 
+[DOI](http://doi.acm.org/10.1145/1858996.1859059)
+[BibTeX](https://squareslab.github.io/papers-repo/bib/schulte-ase10.bib)
 
 Claire Le Goues, Stephanie Forrest, Westley Weimer: The Case for Software
 Evolution. Foundations of Software Engineering Working Conference on the Future
