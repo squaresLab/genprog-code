@@ -18,22 +18,15 @@
                 <li>
                     <a href="{{ site.baseurl }}/">Home</a>
                 </li>
-				{% for page in site.pages %}{% if page.url contains "projects/" %}{% if page.title %}
+                <!-- (slightly) better way to manually order pages -->
+                <!-- These reversals and "priority" instead of "ordering" are jekyll workarounds -->
+                {% assign sorted = (site.pages | sort: "name" | reverse | sort: "priority" | reverse) %}
+                {% for page in sorted%}{% if page.title %}
                 <li>
                     <a href="{{ page.url | prepend: site.baseurl }}">{{ page.title }}</a>
                 </li>
-                {% endif %}{% endif %}{% endfor %}
-                <!-- Stupid way to make "People" appear first and the sort the rest alphabetically -->
-                {% for page in site.pages %}{% if page.url contains "projects/" %}{% else %}{% if page.url contains "people" %}{% if page.title %}
-                <li>
-                    <a href="{{ page.url | prepend: site.baseurl }}">{{ page.title }}</a>
-                </li>
-                {% endif %}{% endif %}{% endif %}{% endfor %}
-                {% for page in site.pages %}{% if page.url contains "projects/" %}{% else %}{% if page.url contains "people" %}{% else %}{% if page.title %}
-                <li>
-                    <a href="{{ page.url | prepend: site.baseurl }}">{{ page.title }}</a>
-                </li>
-                {% endif %}{% endif %}{% endif %}{% endfor %}
+                {% endif %}{% endfor %}
+                <!-- Keep the repository link at the end -->
                 <li>
                   <a href="https://github.com/squareslab/genprog-code">Repository</a>
                 </li>
