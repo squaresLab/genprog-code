@@ -133,34 +133,37 @@
 
 - entry: "Edward K. Smith, Earl Barr, Claire Le Goues, and Yuriy Brun, Is the Cure Worse than the Disease? Overfitting in Automated Program Repair, in Proceedings of the 10th Joint Meeting of the European Software Engineering Conference and ACM SIGSOFT Symposium on the Foundations of Software Engineering (ESEC/FSE '15), 2015."
   pdf: smith15fse.pdf
-  doi: ""
+  doi: http://doi.acm.org/10.1145/2786805.2786825
   bibtex: smith-esecfse15.bib
   category: robustness 
 
 - entry: "Zachary P. Fry, Bryan Landau, Westley Weimer: A Human Study of Patch Maintainability. International Symposium on Software Testing and Analysis (ISSTA), 2012."
   pdf: FryISSTA12_PREPRINT.pdf
-  doi: ""
-  bibtex: ""
+  doi: http://doi.acm.org/10.1145/2338965.2336775
+  bibtex: fry-issta12.bib
   category: robustness
 
 - entry: "Eric Schulte, Zachary P. Fry, Ethan Fast, Westley Weimer, Stephanie Forrest. Software Mutational Robustness. Journ. Genetic Programming and Evolvable Machines (GEPM), 2013."
   pdf: weimer-gpem2013-robust.pdf
-  doi: ""
-  bibtex: ""
+  doi: https://doi.org/10.1007/s10710-013-9195-8
+  bibtex: schulte-gpem13.bib
   category: robustness
 
 - entry: "Adam Brady, Jason Lawrence, Pieter Peers, Westley Weimer. genBRDF: Discovering New analytic BRDFs with Genetic Programming. ACM Transactions on Graphics (Proc. SIGGRAPH), 2014."
   pdf: brady-siggraph2014.pdf
-  bibtex: ""
+  doi: http://doi.acm.org/10.1145/2601097.2601193
+  bibtex: brady-siggraph14.bib
   category: qprop
 
 - entry: "Eric Schulte, Jonathan Dorn, Stephen Harding, Stephanie Forrest, Westley Weimer. Post-compiler Software Optimization for Reducing Energy. Architectural Support for Programming Languages and Operating Systems (ASPLOS), 2014."
   aid: asplos14
+  doi: http://doi.acm.org/10.1145/2541940.2541980
   pdf: schulte-asplos2014.pdf
-  bibtex: ""
+  bibtex: schulte-asplos14.bib
   category: qprop
 
 - entry: "Pitchaya Sitthi-amorn, Nicholas Modly, Westley Weimer, Jason Lawrence. Genetic Programming for Shader Simplification. ACM Transactions on Graphics (Proc. SIGGRAPH Asia), 2011"
   pdf: sitthiamorn_siga11.pdf
-  bibtex: ""
+  doi: http://doi.acm.org/10.1145/2070781.2024186
+  bibtex: sitthiamorn-siga11.bib
   category: qprop
