@@ -27,12 +27,12 @@ abstracts over multiple types
 of software objects including abstract syntax trees parsed from source code,
 LLVM IR, compiled assembler, and linked ELF binaries. Mutation and evaluation
 methods are implemented on top of this interface. This code was used for
-experiments appearing in [ASPLOS 2014](/publications/index.html#asplos14).   
+experiments appearing in [ASPLOS 2014](/genprog-code/publications/index.html#asplos14).   
 * [Genetic Optimization
 Algorithm](https://github.com/eschulte/goa). This GOA implementation accepts an assembly 
 program with a workload and a fitness function (e.g., power consumption) and
 optimizes that fitness function. This source code was used for experiments
-appearing in [ASPLOS 2014](/publications/index.html#asplos14). 
+appearing in [ASPLOS 2014](/genprog-code/publications/index.html#asplos14). 
 * <a id="gpv1.0"></a>The experiments in ICSE 2009, GECCO 2009, GECCO 2010 and TSE 2012 used an older
 version of GenProg. A snapshot of that codebase is available:
 [GenProg v1.0](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz)
@@ -46,13 +46,13 @@ Subject Programs
 <a id="manybugs"></a>**ManyBugs and IntroClass**  
 The [RepairBenchmarks website](http://repairbenchmarks.cs.umass.edu/) contains
 detailed information on the ManyBugs and IntroClass benchmarks, described in
-detail in [TSE 2015](/publications/index.html#tse15), including the baseline
+detail in [TSE 2015](/genprog-code/publications/index.html#tse15), including the baseline
 experimental results for GenProg, AE, and TRPAutoRepair.
 
 <a id="icse12"></a>**105 GenProg ICSE 2012 Program Bugs**  
 These scenarios and results were used for the systematic study on program repair published in ICSE 2012
-([Paper](/publications/index.html#icse12)), and the study of representation and
-operator choices in GECCO 2012 ([Paper](/publications/index.html#gecco12)).
+([Paper](/genprog-code/publications/index.html#icse12)), and the study of representation and
+operator choices in GECCO 2012 ([Paper](/genprog-code/publications/index.html#gecco12)).
 ***Note: these benchmarks are deprecated.*** We include these results for completeness,
 but we discourage their use in future work. Instead, the TSE 2015 benchmarks release
 (above) includes important corrections.  
@@ -61,7 +61,7 @@ but we discourage their use in future work. Instead, the TSE 2015 benchmarks rel
 
 <a id="tse12"></a>**TSE 2012 Bugs**  
 These programs were used in the experiments in [this
-paper](/publications/index.html#tse12); they are a superset of the programs/bugs used
+paper](/genprog-code/publications/index.html#tse12); they are a superset of the programs/bugs used
 in ICSE 2009 and GECCO 2009.  The virtual machine image demonstrates the wu-ftpd
 repair described in that article.  Instructions assume GenProg v1.0.  
 [Virtual Machine Images](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-tse2012-wuftpd.vdi)
@@ -84,7 +84,7 @@ The ASPLOS 2013 paper includes results on the [Software-artifact Infrastructure
 Repository](http://sir.unl.edu/).
 
 **PARSEC**  
-The [ASPLOS 2014](/publications/index.html#asplos14) paper makes use of the [PARSEC](http://parsec.cs.princeton.edu/) benchmark.
+The [ASPLOS 2014](/genprog-code/publications/index.html#asplos14) paper makes use of the [PARSEC](http://parsec.cs.princeton.edu/) benchmark.
 
 
 ---
@@ -94,14 +94,14 @@ Experimental results
 
 ### Automatic program repair
 
-**ASE 2013** ([Paper](/publications/index.html#ase13))  
+**ASE 2013** ([Paper](/genprog-code/publications/index.html#ase13))  
 These experiments relate to the Adaptive Equality repair algorithm that uses an
 approximation to program equivalence to reduce the search and introduces on-line
 learning strategies to order test cases and repairs.  
 [Code](https://github.com/squaresLab/genprog-code/tree/releases/v3.0)
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-ase2013-results.zip)
 
-**ICSE 2012** ([Paper](/publications/index.html#icse12))  
+**ICSE 2012** ([Paper](/genprog-code/publications/index.html#icse12))  
 A systematic study of program repair.  These experiments were conducted on AWS, using images
 that we have converted to VirtualBox format.  The READMEs also point to a
 publicly-available AMI.  Please use <a href="#manybugs">ManyBugs</a> for all
@@ -110,7 +110,7 @@ future experiments.
 [Virtual Machine Images](http://dijkstra.cs.virginia.edu/genprog/resources/genprog_images)
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-icse2012-results.zip)
 
-**TSE 2012** ([Paper](/publications/index.html#tse12))  
+**TSE 2012** ([Paper](/genprog-code/publications/index.html#tse12))  
 These experiments used GenProg 1.0.  The virtual machine image demonstrates the wu-ftpd
 repair described in that article.  
 [Virtual Machine Images](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-tse2012-wuftpd.vdi)

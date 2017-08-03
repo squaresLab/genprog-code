@@ -115,6 +115,7 @@
   category: search
 
 - entry: "Claire Le Goues, Westley Weimer, Stephanie Forrest. Representations and Operators for Improving Evolutionary Software Repair. Genetic and Evolutionary Computing Conference (GECCO), 2012."
+  aid: gecco12
   pdf: genprog-gecco2012-preprint.pdf
   doi: http://doi.acm.org/10.1145/2330163.2330296
   bibtex: legoues-gecco12.bib
