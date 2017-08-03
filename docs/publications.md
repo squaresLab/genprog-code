@@ -182,7 +182,8 @@ fitness functions for automated program repair. Genetic and Evolutionary
 Computing Conference (GECCO), 2010.  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-gecco2010.pdf) 
 [DOI](http://doi.acm.org/10.1145/1830483.1830654)
-[BibTeX](https://squareslab.github.io/papers-repo/bib/fast-gecco10.bib)
+[BibTeX](https://squareslab.github.io/papers-repo/bib/fast-gecco10.bib) |
+[Code, Dataset, and Results]()
 
 ---
 
@@ -194,18 +195,21 @@ than the Disease? Overfitting in Automated Program Repair, in Proceedings of the
 10th Joint Meeting of the European Software Engineering Conference and ACM
 SIGSOFT Symposium on the Foundations of Software Engineering (ESEC/FSE '15), 2015.  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/smith15fse.pdf) 
-[BibTeX]()
+[DOI]()
+[BibTeX](https://squareslab.github.io/papers-repo/bib/smith-esecfse15.bib)
 
 Zachary P. Fry, Bryan Landau, Westley Weimer: A Human Study of Patch
 Maintainability. International Symposium on Software Testing and Analysis
 (ISSTA), 2012.  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/FryISSTA12_PREPRINT.pdf) 
+[DOI]()
 [BibTeX]()
 
 Eric Schulte, Zachary P. Fry, Ethan Fast, Westley Weimer, Stephanie Forrest:
 Software Mutational Robustness. Journ. Genetic Programming and Evolvable
 Machines 2013: July 28  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/weimer-gpem2013-robust.pdf) 
+[DOI]()
 [BibTeX]()
 
 ---
@@ -213,19 +217,19 @@ Machines 2013: July 28
 Non-functional or quality properties:
 -------------------------------------
 
-Adam Brady, Jason Lawrence, Pieter Peers, Westley Weimer: genBRDF: Discovering
+Adam Brady, Jason Lawrence, Pieter Peers, Westley Weimer. genBRDF: Discovering
 New analytic BRDFs with Genetic Programming. ACM Transactions on Graphics
 (Proc. SIGGRAPH), 2014.  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/brady-siggraph2014.pdf) 
 [BibTeX]()
 
-<a id="asplos14"></a>Eric Schulte, Jonathan Dorn, Stephen Harding, Stephanie Forrest, Westley Weimer:
+<a id="asplos14"></a>Eric Schulte, Jonathan Dorn, Stephen Harding, Stephanie Forrest, Westley Weimer.
 Post-compiler Software Optimization for Reducing Energy. Architectural Support
 for Programming Languages and Operating Systems (ASPLOS), 2014.  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/schulte-asplos2014.pdf) 
 [BibTeX]()
 
-Pitchaya Sitthi-amorn, Nicholas Modly, Westley Weimer, Jason Lawrence: Genetic
+Pitchaya Sitthi-amorn, Nicholas Modly, Westley Weimer, Jason Lawrence. Genetic
 Programming for Shader Simplification. ACM Transactions on Graphics
 (Proc. SIGGRAPH Asia) 30(6): 152 (2011)  
 [PDF](https://squareslab.github.io/papers-repo/pdfs/sitthiamorn_siga11.pdf) [BibTeX]()
