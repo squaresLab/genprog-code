@@ -121,14 +121,6 @@ repair described in that article.
 These results cover the GenProg publications in both ICSE 2009 and GECCO 2009.  
 [Experimental Results](http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-2009.tar.gz)
 
-### Human study data
-
-**ISSTA 2012**  
-This dataset includes the subject code and questions presented to humans,
-as well as the human responses.  
-[Dataset](http://dijkstra.cs.virginia.edu/genprog/resources/issta2012-study-data.zip)
-
-
 ### Search specifics
 
 **GECCO 2012:**  
@@ -141,10 +133,13 @@ APR.
 [Experimental Results]()
 
 
----
+### Patch quality, software robustness 
 
-Software robustness:
------------------------------------
+**ISSTA 2012**  
+This dataset includes the subject code and questions presented to humans,
+as well as the human responses.  
+[Dataset](http://dijkstra.cs.virginia.edu/genprog/resources/issta2012-study-data.zip)
+
 
 **GPEM 2013:**  
 These results relate to neutral mutants and software mutational

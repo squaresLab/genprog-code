@@ -220,8 +220,9 @@ New analytic BRDFs with Genetic Programming. ACM Transactions on Graphics
 
 <a id="asplos14"></a>Eric Schulte, Jonathan Dorn, Stephen Harding, Stephanie Forrest, Westley Weimer:
 Post-compiler Software Optimization for Reducing Energy. Architectural Support
-for Programming Languages and Operating Systems (ASPLOS), 2014.
-[PDF](https://squareslab.github.io/papers-repo/pdfs/schulte-asplos2014.pdf) [BibTeX]()
+for Programming Languages and Operating Systems (ASPLOS), 2014.  
+[PDF](https://squareslab.github.io/papers-repo/pdfs/schulte-asplos2014.pdf) 
+[BibTeX]()
 
 Pitchaya Sitthi-amorn, Nicholas Modly, Westley Weimer, Jason Lawrence: Genetic
 Programming for Shader Simplification. ACM Transactions on Graphics

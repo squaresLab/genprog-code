@@ -1,7 +1,7 @@
 ---
 layout: page
 title: "People"
-description: "Collaborators working on this project."
+description: "Collaborators working on this project"
 header-img: "img/header.jpg"
 priority: 1
 ---
