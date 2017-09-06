@@ -112,6 +112,7 @@ Non-functional or quality properties:
 [PDF](https://squareslab.github.io/papers-repo/pdfs/{{ pub.pdf }})
 [DOI]({{ pub.doi }})
 [BibTex](https://squareslab.github.io/papers-repo/bib/{{ pub.bibtex }}) 
+{% if pub.appendix %} [Appendix]({{ pub.appendix }}) {% endif %}
 {% if pub.site or pub.code or pub.dataset or pub.results or pub.vm %} |
 {% if pub.site %} [Code, Dataset, and Results]({{ pub.site }}) {% endif %} {% if pub.code %}  [Code]({{ pub.code }}) {% endif %}  {% if pub.vm %} [Virtual Machine Images]({{ pub.vm }})
 {% endif %} {% if pub.dataset %} [Dataset]({{ pub.dataset }}) {% endif %} {% if pub.results %}  [Results]({{ pub.results }}) {% endif %}

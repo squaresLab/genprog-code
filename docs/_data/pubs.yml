@@ -170,3 +170,12 @@
   doi: http://doi.acm.org/10.1145/2070781.2024186
   bibtex: sitthiamorn-siga11.bib
   category: qprop
+
+- entry: "Jonathan Dorn, Connelly Barnes, Jason Lawrence, Westley Weimer: Towards Automatic Band-Limited Procedural Shaders: Pacific Graphics (PG) 2015: 77-87"
+  pdf: dorn-pg2015.pdf
+  doi: https://doi.org/10.1111/cgf.12747
+  bibtex: dorn-pg15.bib
+  category: qprop
+  dataset: https://www.cs.virginia.edu/~weimer/data/bandlimiting
+  video: https://www.cs.virginia.edu/~weimer/p/dorn-pg2015.mp4
+  appendix: https://squareslab.github.io/papers-repo/pdfs/dorn-pg2015-appendix.pdf
