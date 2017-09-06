@@ -155,6 +155,11 @@ also available.
 Non-functional or quality properties:
 -------------------------------------
 
+**Pacific Graphics 2015**
+
+These experiments use GenProg-like approaches to automatically generate band-limited procedural shaders.
+[Dataset](https://www.cs.virginia.edu/~weimer/data/bandlimiting/)
+
 **ASPLOS 2014**  
 These experiments use GenProg-like approaches to reduce the power consumption of
 software.  
