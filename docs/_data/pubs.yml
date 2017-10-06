@@ -38,7 +38,7 @@
   bibtex: weimer-ase13.bib
   code: https://github.com/squaresLab/genprog-code/tree/releases/v3.0
   dataset: /genprog-code/experiments/index.html#icse12
-  results: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-ase2013-results.zip
+  results: http://dijkstra.eecs.umich.edu/genprog/resources/genprog-ase2013-results.zip
   category: targetC
 
 - entry: "Claire Le Goues, Michael Dewey-Vogt, Stephanie Forrest, Westley Weimer. A Systematic Study of Automated Program Repair: Fixing 55 out of 105 bugs for $8 Each. International Conference on Software Engineering (ICSE), 2012."
@@ -48,9 +48,9 @@
   doi: https://doi.org/10.1109/ICSE.2012.6227211
   bibtex: legoues-icse12.bib
   code: https://github.com/squaresLab/genprog-code/tree/releases/v2.0
-  vm: http://dijkstra.cs.virginia.edu/genprog/resources/genprog_images
+  vm: http://dijkstra.eecs.umich.edu/genprog/resources/genprog_images
   dataset: /genprog-code/experiments/index.html#icse12
-  results: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-icse2012-results.zip
+  results: http://dijkstra.eecs.umich.edu/genprog/resources/genprog-icse2012-results.zip
   category: targetC
 
 - entry: "Claire Le Goues, ThanhVu Nguyen, Stephanie Forrest, Westley Weimer. GenProg: A Generic Method for Automated Software Repair. IEEE Trans. Software Engineering (TSE), 2012 (featured article)."
@@ -58,7 +58,7 @@
   pdf: weimer-tse2012-genprog.pdf
   doi: https://doi.org/10.1109/TSE.2011.104
   bibtex: legoues-tse12.bib
-  code: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz
+  code: http://dijkstra.eecs.umich.edu/genprog/resources/genprog-source-v1.tar.gz
   results: /genprog-code/experiments/index.html#tse12
   category: targetC
 
@@ -66,9 +66,9 @@
   pdf: weimer-gecco2009.pdf
   doi: http://doi.acm.org/10.1145/1569901.1570031
   bibtex: forrest-gecco10.bib
-  code: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz
-  dataset: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-2009.tar.gz
-  results: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-2009.tar.gz
+  code: http://dijkstra.eecs.umich.edu/genprog/resources/genprog-source-v1.tar.gz
+  dataset: http://dijkstra.eecs.umich.edu/genprog/resources/genprog-benchmarks-2009.tar.gz
+  results: http://dijkstra.eecs.umich.edu/genprog/resources/genprog-results-2009.tar.gz
   category: targetC
 
 - entry: "ThanhVu Nguyen, Westley Weimer, Claire Le Goues, Stephanie Forrest. Using Execution Paths to Evolve Software Patches. Workshop on Search-Based Software Testing (SBST) 2009 (best short paper award) (best presentation award)."
@@ -81,9 +81,9 @@
   pdf: weimer-icse2009-genprog.pdf
   doi: https://doi.org/10.1109/ICSE.2009.5070536
   bibtex: weimer-icse09.bib
-  code: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-source-v1.tar.gz
-  dataset: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-benchmarks-2009.tar.gz
-  results: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-results-2009.tar.gz
+  code: http://dijkstra.eecs.umich.edu/genprog/resources/genprog-source-v1.tar.gz
+  dataset: http://dijkstra.eecs.umich.edu/genprog/resources/genprog-benchmarks-2009.tar.gz
+  results: http://dijkstra.eecs.umich.edu/genprog/resources/genprog-results-2009.tar.gz
   category: targetC
 
 - entry: "Eric M. Schulte, Westley Weimer, Stephanie Forrest. Repairing COTS Router Firmware without Access to Source Code or Test Suites: A Case Study in Evolutionary Software Repair, GECCO Companion, 2015."
@@ -120,9 +120,9 @@
   doi: http://doi.acm.org/10.1145/2330163.2330296
   bibtex: legoues-gecco12.bib
   code: https://github.com/squaresLab/genprog-code/tree/releases/v2.0
-  vm: http://dijkstra.cs.virginia.edu/genprog/resources/genprog_images
+  vm: http://dijkstra.eecs.umich.edu/genprog/resources/genprog_images
   dataset: /genprog-code/experiments/index.html#icse12
-  results: http://dijkstra.cs.virginia.edu/genprog/resources/genprog-gecco2012-results.tar.gz
+  results: http://dijkstra.eecs.umich.edu/genprog/resources/genprog-gecco2012-results.tar.gz
   category: search
 
 - entry: "Ethan Fast, Claire Le Goues, Stephanie Forrest, Westley Weimer. Designing better fitness functions for automated program repair. Genetic and Evolutionary Computing Conference (GECCO), 2010."
