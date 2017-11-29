@@ -298,9 +298,9 @@ let main () = begin
     Global.extension := ".txt";
       process base real_ext 
         ((new Stringrep.stringRep) :>('g,'h) Rep.representation)
-    | "" | "exe" | "elf" ->
-      process base real_ext 
-        ((new Elfrep.elfRep) :>('a,'b) Rep.representation);
+    (* | "" | "exe" | "elf" -> *)
+    (*   process base real_ext  *)
+    (*     ((new Elfrep.elfRep) :>('a,'b) Rep.representation); *)
     | other -> begin 
       List.iter (fun (ext,myfun) ->
         if ext = other then myfun () 
