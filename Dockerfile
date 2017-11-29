@@ -13,7 +13,6 @@ RUN apt-get update && \
     echo "yes" >> /tmp/yes.txt && \
     opam init -y < /tmp/yes.txt && \
     opam install -y cil
-RUN ln -s /bin/bash /bin/sh
 
 RUN mkdir -p /opt/genprog
 WORKDIR /opt/genprog
