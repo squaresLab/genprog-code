@@ -19,5 +19,12 @@ WORKDIR /opt/genprog
 ADD Makefile Makefile
 ADD src src
 
-RUN eval $(opam config env) && \
-    make
+RUN mkdir bin && \
+    eval $(opam config env) && \
+    make && \
+    mv src/repair bin/genprog && \
+    ln -s bin/genprog bin/repair && \
+    mv src/distserver bin/distserver && \
+    mv src/nhtserver bin/nhtserver
+
+ENV PATH "/opt/genprog/bin:${PATH}"
