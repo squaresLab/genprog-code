@@ -1,0 +1,10 @@
+version: '1.0'
+type: tool
+name: genprog
+build:
+  type: docker
+  tag: squareslab/genprog:latest
+  context: .
+  file: Dockerfile
+environment:
+  path: "/opt/genprog/bin:${PATH}"
