@@ -6,6 +6,8 @@
 GenProg: Evolutionary Program Repair
 ====================================
 
+[![Build Status](https://travis-ci.org/squaresLab/genprog-code.svg?branch=master)](https://travis-ci.org/squaresLab/genprog-code)
+
 - Author: Claire Le Goues
 - Modified by: Jeremy Lacomis
 - Contact: <legoues@cs.cmu.edu>, <jlacomis@cmu.edu>
