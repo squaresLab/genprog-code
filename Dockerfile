@@ -18,3 +18,6 @@ RUN mkdir -p /opt/genprog
 WORKDIR /opt/genprog
 ADD Makefile Makefile
 ADD src src
+
+RUN eval $(opam config env) && \
+    make
