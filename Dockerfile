@@ -28,3 +28,5 @@ RUN mkdir bin && \
     mv src/nhtserver bin/nhtserver
 
 ENV PATH "/opt/genprog/bin:${PATH}"
+
+VOLUME /opt/genprog
