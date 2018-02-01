@@ -7,4 +7,4 @@ build:
   context: .
   file: Dockerfile
 environment:
-  path: "/opt/genprog/bin:${PATH}"
+  PATH: "/opt/genprog/bin:${PATH}"
