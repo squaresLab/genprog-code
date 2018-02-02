@@ -98,15 +98,17 @@ latest versions as well.
 
     If you install CIL using opam, make sure that the CIL environment variable
     isn't set and move on the step 2. If you choose to skip opam, the following
-    instructions should work:
-
-    Make sure that you have the OCaml compiler, perl, and [ocamlfind][]
+    instructions should work. Make sure that you have the OCaml compiler, perl, and [ocamlfind][]
     installed and run:
 
-        cd cil
-        ./configure
-        make 
-        make cillib
+       wget http://downloads.sourceforge.net/project/cil/cil/cil-1.7.3.tar.gz
+       tar xvzf cil-1.7.3.tar.gz
+       cd cil-1.7.3
+       ./configure
+       make
+       make cillib
+       export CIL=`pwd` # see explanation below
+       cd ..
 
     `make cillib` is the important part, so if `make` chokes, try just `make
     cillib`
