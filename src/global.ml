@@ -411,6 +411,7 @@ let neg_tests = ref 1
 let extension = ref "" 
 let search_strategy = ref "brute"
 let incoming_pop_file = ref "" 
+let multifile = ref false
 
 let usageMsg = "Program Repair Prototype (v2)\n" 
 (**/**)
@@ -429,6 +430,8 @@ let options = ref [
 
   "--gui", Arg.Set gui, " enable phone GUI demo-based output. gui";
 
+  "--multi-file", Arg.Set multifile, " assume program is specified as a list of multiple files.";
+
   "--quiet", Arg.Set quiet, " disable all debug output. quiet";
 
 ] 
@@ -438,7 +441,7 @@ let validators : (unit -> unit) list ref = ref []
 let deprecated_options = [
   "--recompute-weights"; "--neutral"; "--mutrb-runs"; "--neutral-walk-steps";
   "--oracle-search-string";
-  "--use-subdirs"; "--use-full-paths"; "--multi-file"; "--skip-sanity";
+  "--use-subdirs"; "--use-full-paths"; "--skip-sanity";
   "--force-sanity"; "--use-subatoms"; "--print-func-lines";
   "--print-line-numbers"; "--print-fix-info"; "--one-pos";
   "--neutral-walk-pop-size"; "--suffix-extension"; "--no-canonify-sids";
