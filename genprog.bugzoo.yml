@@ -1,0 +1,11 @@
+version: '1.0'
+
+blueprints:
+  - type: docker
+    tag: squareslab/genprog
+
+tools:
+  - name: genprog
+    image: squareslab/genprog
+    environment:
+      PATH: "/opt/genprog/bin:${PATH}"
