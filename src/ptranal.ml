@@ -1,10 +1,10 @@
 (* Tue Apr 23 10:16:43 EDT 2013 WRW -- this is a copy of 'ptranal.ml' from
  * CIL 1.6.0 copied locally and adapted to work with Genprog (e.g., for
- * handling the strong update problem when computing dataflow analyses). *) 
- 
+ * handling the strong update problem when computing dataflow analyses). *)
+
 (*
  *
- * Copyright (c) 2001-2017,
+ * Copyright (c) 2001-2018,
  *  John Kodumal        <jkodumal@eecs.berkeley.edu>
  * All rights reserved.
  *

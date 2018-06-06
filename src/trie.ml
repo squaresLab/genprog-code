@@ -1,12 +1,13 @@
 (*
  *
- * Copyright (c) 2012-2017,
- *  Wes Weimer          <weimer@cs.virginia.edu>
- *  Stephanie Forrest   <forrest@cs.unm.edu>
- *  Jonathan Dorn       <dorn@virginia.edu>
+ * Copyright (c) 2012-2018,
+ *  Wes Weimer          <weimerw@umich.edu>
+ *  Stephanie Forrest   <steph@asu.edu>
+ *  Claire Le Goues     <clegoues@cs.cmu.edu>
+ *  Eric Schulte        <eschulte@cs.unm.edu>
  *  Jeremy Lacomis      <jlacomis@cmu.edu>
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
  * met:
