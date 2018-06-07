@@ -519,14 +519,15 @@ let fundec_to_ast (node_info : tree_node IntMap.t) (f:Cil.fundec) =
   let exp_to_typelabel e =
     let e' =
       match e with
-      | Const _  | Lval _ | SizeOf _
-      | SizeOfStr _ | AlignOf _  | AddrOf _
-      | StartOf _ -> e
-      | SizeOfE e1 -> SizeOfE(Cil.zero)
-      | AlignOfE e1 -> AlignOfE(Cil.zero)
-      | UnOp(u,e1,t) -> UnOp(u,Cil.zero,t)
-      | BinOp(b,e1,e2,t) -> BinOp(b,Cil.zero, Cil.zero, t)
-      | CastE(t,e1) -> CastE(t, Cil.zero)
+      | Const _  | Lval _ | SizeOf _ | SizeOfStr _ | AlignOf _
+        | AddrOf _ | AddrOfLabel _ | StartOf _ -> e
+      | SizeOfE (e1) -> SizeOfE (Cil.zero)
+      | AlignOfE (e1) -> AlignOfE (Cil.zero)
+      | UnOp (u, _, t) -> UnOp (u, Cil.zero, t)
+      | BinOp (b, _, _, t) -> BinOp (b, Cil.zero, Cil.zero, t)
+      | Question (_, _, _, t) -> Question (Cil.zero, Cil.zero, Cil.zero, t)
+      | CastE (t, _) -> CastE (t, Cil.zero)
+
     in
     let doc = dn_exp () e' in
     let str = Pretty.sprint ~width:80 doc in
