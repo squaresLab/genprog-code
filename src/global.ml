@@ -180,7 +180,7 @@ let system cmd =
   let _, status = Unix.waitpid [] p.pid in
   status
 
-(** {6 Utility Functions} *)
+(* {6 Utility Functions} *)
 (** return a copy of 'lst' where each element occurs once *)
 let uniq lst =
   let ht = Hashtbl.create 255 in
