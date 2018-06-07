@@ -464,9 +464,10 @@ let stmt_to_typelabel (s : Cil.stmt) =
   in
 (* CLG potential FIXME: lvals? *)
   let convert_label l = match l with
-    | Label(s,loc,b) -> Label(s,dummyLoc,b)
-    | Case(e,loc) -> Case(convert_exp e,dummyLoc)
-    | Default(loc) -> Default(dummyLoc)
+    | Label (s, loc, b) -> Label (s, dummyLoc, b)
+    | Case (e, loc) -> Case (convert_exp e, dummyLoc)
+    | Default (loc) -> Default(dummyLoc)
+    | CaseRange (e, f, loc) -> CaseRange(convert_exp e, convert_exp f, dummyLoc)
   in
   let labels = List.map convert_label s.labels in
   let convert_il il =
