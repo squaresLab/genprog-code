@@ -1062,13 +1062,15 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
         ((Delete atom),thunk,weight)
     ) fault_localization ;
   let num_pre_deletes = llen !deletes in
-  if(List.length !excluded_edits) > 0 then begin
-    deletes := List.filter
-      (fun (Delete(src),_,_) ->
-      	let app_str = (Printf.sprintf "d(%d)" src) in
-          not (List.mem app_str !excluded_edits))
-      !deletes
-  end ;
+  if (List.length !excluded_edits) > 0 then begin
+      let delete_filter = function
+        | Delete (src), _, _ ->
+      	   let app_str = (Printf.sprintf "d(%d)" src) in
+           not (List.mem app_str !excluded_edits)
+        | _ -> false
+      in
+      deletes := List.filter delete_filter !deletes
+    end;
   debug "excluded %d deletes (from list of %d total edits)\n" (num_pre_deletes-(llen !deletes)) (llen !excluded_edits) ;
   debug "search: ww_adaptive: %d deletes\n" (llen !deletes) ;
   let deletes = !deletes in
