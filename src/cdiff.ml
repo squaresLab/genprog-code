@@ -519,15 +519,13 @@ let fundec_to_ast (node_info : tree_node IntMap.t) (f:Cil.fundec) =
   let exp_to_typelabel e =
     let e' =
       match e with
-      | Const _  | Lval _ | SizeOf _ | SizeOfStr _ | AlignOf _
-        | AddrOf _ | AddrOfLabel _ | StartOf _ -> e
       | SizeOfE (e1) -> SizeOfE (Cil.zero)
       | AlignOfE (e1) -> AlignOfE (Cil.zero)
       | UnOp (u, _, t) -> UnOp (u, Cil.zero, t)
       | BinOp (b, _, _, t) -> BinOp (b, Cil.zero, Cil.zero, t)
       | Question (_, _, _, t) -> Question (Cil.zero, Cil.zero, Cil.zero, t)
       | CastE (t, _) -> CastE (t, Cil.zero)
-
+      | _ -> e
     in
     let doc = dn_exp () e' in
     let str = Pretty.sprint ~width:80 doc in
@@ -552,14 +550,13 @@ let fundec_to_ast (node_info : tree_node IntMap.t) (f:Cil.fundec) =
     end else []
   and exp_children e =
     match e with
-    | Const _ | Lval _  | SizeOf _ | SizeOfStr _  | AlignOf _  | AddrOf _
-      | AddrOfLabel _ | StartOf _  -> [| |]
     | SizeOfE (e') | AlignOfE (e') | UnOp (_, e', _) | CastE (_, e') ->
        Array.of_list (exp_to_node e')
     | BinOp (_, e1, e2, _) ->
        Array.of_list ((exp_to_node e1) @ (exp_to_node e2))
     | Question (e1, e2, e3, _) ->
        Array.of_list ((exp_to_node e1) @ (exp_to_node e2) @ (exp_to_node e3))
+    | _ -> [| |]
   in
   let instr_children i =
     if !exp_diff_level then begin
@@ -580,7 +577,6 @@ let fundec_to_ast (node_info : tree_node IntMap.t) (f:Cil.fundec) =
       n.nid
   and stmt_children (s : Cil.stmt) : node_id array =
     match s.skind with
-    | Goto _ | ComputedGoto _ | Break _  | Continue _  -> [| |]
     | Instr ils ->
        let lst : node_id list =
          lfoldl (fun a i -> (instr_children i) @ a) [] ils in
@@ -612,6 +608,7 @@ let fundec_to_ast (node_info : tree_node IntMap.t) (f:Cil.fundec) =
     | Block (block) ->
        let children = List.map stmt_to_node block.bstmts in
        Array.of_list children
+    | _ -> [| |]
   in
   let b = wrap_block f.sbody in
     stmt_to_node b , !node_info
@@ -646,8 +643,6 @@ let rec node_to_stmt (node_info : tree_node IntMap.t) (n : tree_node) : Cil.stmt
     mkStmt
       begin
         match skind with
-        | Instr _  | Return _ | Goto _ | ComputedGoto _ | Break _
-          | Continue _  -> skind
         | If (e, _, _, l) -> require 2; If (e, block 0, block 1, l)
         | Switch (e, _, sl, l) -> require 1; Switch (e, block 0, sl, l)
         | Loop (_, l, so1, so2) -> require 1; Loop (block 0, l, so1, so2)
@@ -655,6 +650,7 @@ let rec node_to_stmt (node_info : tree_node IntMap.t) (n : tree_node) : Cil.stmt
         | TryExcept (_, (il, e), _, l) ->
            require 2; TryExcept (block 0, (il,e), block 1, l)
         | Block _ -> Block (mkBlock (Array.to_list children))
+        | _ -> skind
       end
   in
   stmt.labels <- labels;
