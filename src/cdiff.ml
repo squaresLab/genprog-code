@@ -625,7 +625,7 @@ let rec node_to_stmt (node_info : tree_node IntMap.t) (n : tree_node) : Cil.stmt
     let child = node_of_nid node_info child in
       node_to_stmt node_info child
   ) n.children in
-  let labels, skind,_ = Hashtbl.find inv_typelabel_ht n.typelabel in
+  let labels, skind, _ = Hashtbl.find inv_typelabel_ht n.typelabel in
   let require x =
     if Array.length children = x then ()
     else begin
@@ -642,21 +642,23 @@ let rec node_to_stmt (node_info : tree_node IntMap.t) (n : tree_node) : Cil.stmt
       dummyBlock
     end
   in
-  let stmt = mkStmt begin
-    match skind with
-    | Instr _  | Return _ | Goto _
-    | Break _  | Continue _  -> skind
-    | If(e,b1,b2,l)  -> require 2 ; If(e,block 0,block 1,l)
-    | Switch(e,b,sl,l) -> require 1 ; Switch(e,block 0,sl,l)
-    | Loop(b,l,so1,so2) -> require 1 ; Loop(block 0,l,so1,so2)
-    | TryFinally(b1,b2,l) -> require 2 ; TryFinally(block 0,block 1,l)
-    | TryExcept(b1,(il,e),b2,l) ->
-      require 2; TryExcept(block 0,(il,e),block 1,l)
-    | Block _ -> Block(mkBlock (Array.to_list children))
-  end
+  let stmt =
+    mkStmt
+      begin
+        match skind with
+        | Instr _  | Return _ | Goto _ | ComputedGoto _ | Break _
+          | Continue _  -> skind
+        | If (e, _, _, l) -> require 2; If (e, block 0, block 1, l)
+        | Switch (e, _, sl, l) -> require 1; Switch (e, block 0, sl, l)
+        | Loop (_, l, so1, so2) -> require 1; Loop (block 0, l, so1, so2)
+        | TryFinally (_, _, l) -> require 2; TryFinally (block 0, block 1, l)
+        | TryExcept (_, (il, e), _, l) ->
+           require 2; TryExcept (block 0, (il,e), block 1, l)
+        | Block _ -> Block (mkBlock (Array.to_list children))
+      end
   in
-    stmt.labels <- labels ;
-    stmt
+  stmt.labels <- labels;
+  stmt
 
 (** @param node_info mapping [node_id]s to [tree_node]s
     @param f base Cil.fundec into which we will put the converted AST
