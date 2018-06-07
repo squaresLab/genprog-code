@@ -1382,9 +1382,10 @@ let pd_exploit (original : ('a,'b) Rep.representation) incoming_pop =
       () (* seen it before *)
     else begin
       (* try positive tests, in model order, until one fails *)
-      let allowed t = match t with
+      let allowed = function
         | Positive _ -> true
         | Negative _ -> false
+        | Single_Fitness -> failwith "Single fitness unimplemented here"
       in
       let is_neutral = Fitness.test_to_first_failure ~allowed v in
       if is_neutral then begin
