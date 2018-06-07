@@ -58,31 +58,42 @@ let gen_per_exchange = ref 1
 let diversity_selection = ref 0
 let split_search = ref 0
 
-let _ =
-  options := !options @ [
-    "--hostname", Arg.Set_string hostname, "X server ip" ;
+let () =
+  let options = [
+      "--hostname",
+      Arg.Set_string hostname,
+      "X server ip";
 
-    "--sport", Arg.Set_int server_port, "X server port" ;
+      "--sport",
+      Arg.Set_int server_port,
+      "X server port";
 
-    "--port", Arg.Set_int my_port, "X my port"  ;
+      "--port",
+      Arg.Set_int my_port,
+      "X my port";
 
-    "--num-comps", Arg.Set_int num_comps,
-    "X Distributed: Number of computers to simulate" ;
+      "--num-comps",
+      Arg.Set_int num_comps,
+      "X Distributed: Number of computers to simulate";
 
-    "--diversity-selection", Arg.Set_int diversity_selection,
-    "X Distributed: Use diversity for exchange";
+      "--diversity-selection",
+      Arg.Set_int diversity_selection,
+      "X Distributed: Use diversity for exchange";
 
-    "--variants-exchanged", Arg.Set_int variants_exchanged,
-    "X Distributed: Number of variants to send" ;
+      "--variants-exchanged",
+      Arg.Set_int variants_exchanged,
+      "X Distributed: Number of variants to send";
 
-    "--gen-per-exchange", Arg.Set_int gen_per_exchange,
-    "X Distributed: Number of generations between exchanges" ;
+      "--gen-per-exchange",
+      Arg.Set_int gen_per_exchange,
+      "X Distributed: Number of generations between exchanges";
 
     (* CLG FIXME: is split search ever different from num_comps? *)
-    "--split-search", Arg.Set_int split_search,
-    "X Distributed: Split up the search space" ;
-
-  ]
+      "--split-search",
+      Arg.Set_int split_search,
+      "X Distributed: Split up the search space";
+    ] in
+  add_options options
 
 exception Server_shutdown
 

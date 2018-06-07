@@ -61,12 +61,17 @@ let representation = ref ""
 let edits = ref ""
 let time_at_start = Unix.gettimeofday ()
 
-let _ =
-  options := !options @
-  [
-    "--rep", Arg.Set_string representation, "X representation X (c,txt,java)" ;
-    "--edits", Arg.Set_string edits, "X edits to apply to representation" ;
-  ]
+let () =
+  let options = [
+      "--rep",
+      Arg.Set_string representation,
+      "X representation X (c,txt,java)";
+
+      "--edits",
+      Arg.Set_string edits,
+      "X edits to apply to representation";
+    ] in
+  add_options options
 
 let debug fmt =
   let k result = begin

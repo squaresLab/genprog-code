@@ -47,13 +47,17 @@ open Global
 let templates_file = ref ""
 let template_cache_file = ref ""
 
-let _ =
-  options := !options @ [
-      "--templates", Arg.Set_string templates_file,
+let () =
+  let options = [
+      "--templates",
+      Arg.Set_string templates_file,
       " Use repair templates; read from file X.  Default: none";
-      "--template-cache", Arg.Set_string template_cache_file,
-       "save the template computations to avoid wasting time." ;
-  ]
+
+      "--template-cache",
+      Arg.Set_string template_cache_file,
+      "save the template computations to avoid wasting time.";
+    ] in
+  add_options options
 
 (* Note that lval is used improperly, here, since an lval is technically the
    left-hand-side of any expression, and I use it to mean a variable name.

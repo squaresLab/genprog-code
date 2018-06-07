@@ -77,11 +77,11 @@ open Global
 let pellacini_method_name = ref ""
 
 
-let _ =
-  options := !options @
-    [
-      "--pellacini-method", Arg.Set_string pellacini_method_name, "X operate on Fragment shader method X" ;
-    ]
+let () =
+  let flag = "--pellacini-method" in
+  let arg = Arg.Set_string pellacini_method_name in
+  let description = "X operate on Fragment shader method X" in
+  add_option flag arg description
 
 (*************************************************************************
                                                                           * Preprocessing and Expression Numbering

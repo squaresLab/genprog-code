@@ -572,111 +572,154 @@ let sanity = ref "default"
 
 let ccfile = ref ""  (* path to code clone file *)
 
-let _ =
-  options := !options @
-    [
-      "--prefix", Arg.Set_string prefix,
+let () =
+  let options = [
+      "--prefix",
+      Arg.Set_string prefix,
       "X append X on file names to access original source.  Default: ./";
 
-      "--sanity", Arg.Set_string sanity,
+      "--sanity",
+      Arg.Set_string sanity,
       "X Sanity strategy. Options: \"yes\", \"no\".  Default: yes if no preexisting rep cache, no otherwise.";
 
-      "--no-rep-cache", Arg.Set no_rep_cache,
-      " do not load representation (parsing) .cache file" ;
+      "--no-rep-cache",
+      Arg.Set no_rep_cache,
+      " do not load representation (parsing) .cache file";
 
-      "--name-in-test-cache", Arg.Set name_in_test_cache,
+      "--name-in-test-cache",
+      Arg.Set name_in_test_cache,
       " cache variant names with test results. Default: unset to same memory";
 
-      "--neg-weight", Arg.Set_float negative_path_weight,
+      "--neg-weight",
+      Arg.Set_float negative_path_weight,
       "X weight to give statements only on the negative path. Default: 1.0";
 
-      "--pos-weight", Arg.Set_float positive_path_weight,
+      "--pos-weight",
+      Arg.Set_float positive_path_weight,
       "X weight to give statements on both the positive and the negative paths. Default: 0.1";
 
-      "--fitness-in-parallel", Arg.Set_int fitness_in_parallel,
+      "--fitness-in-parallel",
+      Arg.Set_int fitness_in_parallel,
       "X allow X fitness evals for 1 variant in parallel";
 
-      "--keep-source", Arg.Set always_keep_source,
+      "--keep-source",
+      Arg.Set always_keep_source,
       " keep all source files";
 
-      "--nested", Arg.Set(do_nested),
-      " allow mutating the results of a previous mutation" ;
+      "--nested",
+      Arg.Set do_nested,
+      " allow mutating the results of a previous mutation";
 
-      "--test-command", Arg.Set_string test_command, "X use X as test command";
+      "--test-command",
+      Arg.Set_string test_command,
+      "X use X as test command";
 
-      "--test-script", Arg.Set_string test_script, "X use X as test script name";
+      "--test-script",
+      Arg.Set_string test_script,
+      "X use X as test script name";
 
-      "--compiler", Arg.Set_string compiler_name, "X use X as compiler";
+      "--compiler",
+      Arg.Set_string compiler_name,
+      "X use X as compiler";
 
-      "--compiler-command", Arg.Set_string compiler_command,
+      "--compiler-command",
+      Arg.Set_string compiler_command,
       "X use X as compiler command";
 
-      "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
+      "--compiler-opts",
+      Arg.Set_string compiler_options,
+      "X use X as options";
 
-      "--preprocessor", Arg.Set_string preprocess_command,
-      " preprocessor command. Default: __COMPILER_NAME__ -E __COMPILER_OPTIONS__" ;
+      "--preprocessor",
+      Arg.Set_string preprocess_command,
+      " preprocessor command. Default: __COMPILER_NAME__ -E __COMPILER_OPTIONS__";
 
-      "--label-repair", Arg.Set label_repair, " indicate repair locations";
+      "--label-repair",
+      Arg.Set label_repair,
+      " indicate repair locations";
 
-      "--flatten-path", Arg.Set_string flatten_path,
+      "--flatten-path",
+      Arg.Set_string flatten_path,
       "X flatten weighted path (sum/min/max/first/last)";
 
-      "--allow-coverage-fail", Arg.Set allow_coverage_fail,
-      " allow coverage to fail its test cases" ;
+      "--allow-coverage-fail",
+      Arg.Set allow_coverage_fail,
+      " allow coverage to fail its test cases";
 
-      "--regen-paths", Arg.Set regen_paths, " regenerate path files";
+      "--regen-paths",
+      Arg.Set regen_paths,
+      " regenerate path files";
 
-      "--fault-scheme", Arg.Set_string fault_scheme,
+      "--fault-scheme",
+      Arg.Set_string fault_scheme,
       "X fault localization scheme X.  Options: path, uniform, line, weight, tarantula, jaccard, ochiai, clone. Default: path";
 
       (* CLG potential TODO: get rid of ccfile, use fault_file instead? *)
-      "--clone-file", Arg.Set_string ccfile,
+      "--clone-file",
+      Arg.Set_string ccfile,
       "X code clone file used to modify weights";
 
-      "--fault-path", Arg.Set_string fault_path,
+      "--fault-path",
+      Arg.Set_string fault_path,
       "X Negative path file, for path-based localization.  Default: coverage.path.neg";
 
-      "--fault-file", Arg.Set_string fault_file,
+      "--fault-file",
+      Arg.Set_string fault_file,
       "X Fault localization file.  e.g., Lines/weights if scheme is lines/weights.";
 
-      "--fix-scheme", Arg.Set_string fix_scheme,
+      "--fix-scheme",
+      Arg.Set_string fix_scheme,
       "X Fix localization scheme X.  Options: path, uniform, line, weight, oracle, default (whatever Wes was doing before). Default: default";
 
-      "--fix-path", Arg.Set_string fix_path,
+      "--fix-path",
+      Arg.Set_string fix_path,
       "X Positive path file, for path-based localization. Default: coverage.path.pos";
 
-      "--fix-file", Arg.Set_string fix_file,
+      "--fix-file",
+      Arg.Set_string fix_file,
       "X Fix localization information file, e.g., Lines/weights.";
 
-      "--fix-oracle", Arg.Set_string fix_oracle_file,
+      "--fix-oracle",
+      Arg.Set_string fix_oracle_file,
       "X List of source files for the oracle fix information.";
 
-      "--coverage-info", Arg.Set_string coverage_info,
+      "--coverage-info",
+      Arg.Set_string coverage_info,
       "X Collect and print out suite coverage info to file X";
 
-      "--coverage-per-test", Arg.Set coverage_per_test,
+      "--coverage-per-test",
+      Arg.Set coverage_per_test,
       " create and use 'per test case' coverage information" ;
 
-      "--use-partition", Arg.Set_int partition,
+      "--use-partition",
+      Arg.Set_int partition,
       "N restrict mutations to partition N";
 
-	  "--valgrind", Arg.Set is_valgrind, " the program under repair is valgrind; lots of hackiness/special processing.";
+	  "--valgrind",
+      Arg.Set is_valgrind,
+      " the program under repair is valgrind; lots of hackiness/special processing.";
 
-      "--rep-cache", Arg.Set_string rep_cache_file,
+      "--rep-cache",
+      Arg.Set_string rep_cache_file,
       "X rep cache file.  Default: base_name.cache.";
 
-      "--num-fitness-samples", Arg.Set_int num_fitness_samples,
+      "--num-fitness-samples",
+      Arg.Set_int num_fitness_samples,
       "X max number of times to resample a variant's fitness. Default: 1";
 
-      "--skip-tests", Arg.Set_string skipped_tests,
+      "--skip-tests",
+      Arg.Set_string skipped_tests,
       "X assume test cases X (concat all names) pass" ;
 
-      "--skip-failed-sanity-tests", Arg.Set skip_failed_sanity_tests,
+      "--skip-failed-sanity-tests",
+      Arg.Set skip_failed_sanity_tests,
       " skip those tests that the sanity check fails" ;
 
-      "--use-global-source-cache", Arg.Set use_global_source_cache,
+      "--use-global-source-cache",
+      Arg.Set use_global_source_cache,
       " Use the global source cache  Default: false";
-    ]
+    ] in
+  add_options options
 
 let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640
 

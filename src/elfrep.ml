@@ -52,12 +52,13 @@ open Rep
 exception Not_Supported of string
 
 let elf_risc = ref false
-let _ =
-  options := !options @
-    [
-      "--elf-risc", Arg.Set elf_risc,
-      " Specify that a RISC instruction set is used with fixed-width instructions."
-    ]
+let () =
+  let flag = "--elf-risc" in
+  let arg = Arg.Set elf_risc in
+  let description =
+    " Specify that a RISC instruction set is used with fixed-width instructions."
+  in
+  add_option flag arg description
 
 let elfRep_version = "1"
 (**/**)

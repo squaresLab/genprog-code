@@ -58,35 +58,45 @@ let describe_machine = ref false
 let oracle_genome = ref ""
 let show_version  = ref false
 
-let _ =
-  options := !options @
-  [
-    "--describe-machine", Arg.Set describe_machine,
-    " describe the current machine (e.g., for cloud computing)" ;
+let () =
+  let options = [
+      "--describe-machine",
+      Arg.Set describe_machine,
+      " describe the current machine (e.g., for cloud computing)";
 
-    "--incoming-pop", Arg.Set_string incoming_pop_file,
-    "X file of variants for the first generation.  Either binary or a list of genomes to be read from a string." ;
+      "--incoming-pop",
+      Arg.Set_string incoming_pop_file,
+      "X file of variants for the first generation.  Either binary or a list of genomes to be read from a string.";
 
-    "--no-test-cache", Arg.Set Rep.no_test_cache,
-    " do not load testing .cache file" ;
+      "--no-test-cache",
+      Arg.Set Rep.no_test_cache,
+      " do not load testing .cache file";
 
-    "--nht-server", Arg.Set_string Rep.nht_server,
-    "X connect to network test cache server X" ;
+      "--nht-server",
+      Arg.Set_string Rep.nht_server,
+      "X connect to network test cache server X";
 
-    "--nht-port", Arg.Set_int Rep.nht_port,
-    "X connect to network test cache server on port X" ;
+      "--nht-port",
+      Arg.Set_int Rep.nht_port,
+      "X connect to network test cache server on port X";
 
-    "--nht-id", Arg.Set_string Rep.nht_id,
-    "X this repair scenario's NHT identifier" ;
+      "--nht-id",
+      Arg.Set_string Rep.nht_id,
+      "X this repair scenario's NHT identifier";
 
-    "--rep", Arg.Set_string representation, "X representation X (c,txt,java)" ;
+      "--rep",
+      Arg.Set_string representation,
+      "X representation X (c,txt,java)";
 
-    "--oracle-genome", Arg.Set_string oracle_genome,
-    "X genome for oracle search, either string or binary file.";
+      "--oracle-genome",
+      Arg.Set_string oracle_genome,
+      "X genome for oracle search, either string or binary file.";
 
-    "--version", Arg.Set show_version, " print the version and exit";
-  ]
-
+      "--version",
+      Arg.Set show_version,
+      " print the version and exit";
+    ] in
+  add_options options
 
 (** {b process} base_file_name extension new_representation conducts the repair
     search on a base representation.  It loads the representation in

@@ -44,12 +44,12 @@ open Simplerep
 
 (**/**)
 let sample_runs = ref 100
-let _ =
-  options := !options @
-    [
-      "--sample-runs", Arg.Set_int sample_runs,
-      "X Execute X runs of the test suite while sampling with oprofile.";
-    ]
+let () =
+  let flag = "--sample-runs" in
+  let arg = Arg.Set_int sample_runs in
+  let description =
+      "X Execute X runs of the test suite while sampling with oprofile." in
+  add_option flag arg description
 (**/**)
 
 (** Implements a simple Gaussian blur function for the smoothing of sampled

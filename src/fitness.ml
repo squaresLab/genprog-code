@@ -60,28 +60,37 @@ let sample_strategy = ref "variant"
 
 let best_test_rule = ref "1 * test_fail_prob ; 1 * test_fail_count ; -1 * test_pass_count"
 
-let _ =
-  options := !options @ [
-    "--negative-test-weight", Arg.Set_float negative_test_weight,
-    "X negative tests fitness factor. Default: 2.0";
+let () =
+  let options = [
+      "--negative-test-weight",
+      Arg.Set_float negative_test_weight,
+      "X negative tests fitness factor. Default: 2.0";
 
-    "--single-fitness", Arg.Set single_fitness, " use a single fitness value";
+      "--single-fitness",
+      Arg.Set single_fitness,
+      " use a single fitness value";
 
-    "--sample", Arg.Set_float sample,
-    "X sample size of positive test cases to use for fitness. Default: 1.0";
+      "--sample",
+      Arg.Set_float sample,
+      "X sample size of positive test cases to use for fitness. Default: 1.0";
 
-    "--samp-strat", Arg.Set_string sample_strategy,
-    "X Sample strategy: variant, generation, all. Default: variant";
+      "--samp-strat",
+      Arg.Set_string sample_strategy,
+      "X Sample strategy: variant, generation, all. Default: variant";
 
-    "--print-source-name", Arg.Set print_source_name,
-    " Print the source name(s) of variants with their fitness. Default: false";
+      "--print-source-name",
+      Arg.Set print_source_name,
+      " Print the source name(s) of variants with their fitness. Default: false";
 
-    "--print-incremental-evals", Arg.Set print_incremental_evals,
-    " Print the number of evals to date along with variants/fitness. Default:false";
+      "--print-incremental-evals",
+      Arg.Set print_incremental_evals,
+      " Print the number of evals to date along with variants/fitness. Default:false";
 
-    "--best-test-rule", Arg.Set_string best_test_rule,
-    "X use X to rank possible tests in adaptive search";
-  ]
+      "--best-test-rule",
+      Arg.Set_string best_test_rule,
+      "X use X to rank possible tests in adaptive search";
+    ] in
+  add_options options
 
 exception Test_Failed
 

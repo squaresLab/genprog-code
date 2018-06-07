@@ -90,64 +90,85 @@ let disable_reduce_search_space = ref false
  * maximizes 2 * model variable B." *)
 let best_edit_rule = ref "1 * fault_loc_weight ; 1 * max_test_fail_prob ; -1 * num_tests"
 
-let _ =
-  options := !options @ [
-    "--appp", Arg.Set_float app_prob,
-    "X relative append probability. Default: 0.3333.";
+let () =
+  let options = [
+      "--appp",
+      Arg.Set_float app_prob,
+      "X relative append probability. Default: 0.3333.";
 
-    "--delp", Arg.Set_float del_prob,
-    "X relative delete probability. Default: 0.3333.";
+      "--delp",
+      Arg.Set_float del_prob,
+      "X relative delete probability. Default: 0.3333.";
 
-    "--swapp", Arg.Set_float swap_prob,
-    "X relative swap probability. Default: 0.3333";
+      "--swapp",
+      Arg.Set_float swap_prob,
+      "X relative swap probability. Default: 0.3333";
 
-    "--repp", Arg.Set_float rep_prob,
-    "X relative replace probability. Default: 0.0";
+      "--repp",
+      Arg.Set_float rep_prob,
+      "X relative replace probability. Default: 0.0";
 
-    "--lasep", Arg.Set_float lase_prob,
-    "X relative probability of applying LASE templates. Default: 0.0";
+      "--lasep",
+      Arg.Set_float lase_prob,
+      "X relative probability of applying LASE templates. Default: 0.0";
 
-    "--generations", Arg.Set_int generations,
-    "X conduct X iterations of the given search strategy. Default: 10.";
+      "--generations",
+      Arg.Set_int generations,
+      "X conduct X iterations of the given search strategy. Default: 10.";
 
-    "--max-evals", Arg.Set_int max_evals,
-    "X allow X maximum fitness evaluations in GA runs";
+      "--max-evals",
+      Arg.Set_int max_evals,
+      "X allow X maximum fitness evaluations in GA runs";
 
-    "--promut", Arg.Set_int promut, "X make X mutations per 'mutate' call";
+      "--promut",
+      Arg.Set_int promut,
+      "X make X mutations per 'mutate' call";
 
-    "--geomp", Arg.Set_float geomp,
-    "X probability of success for geometric distribution of mutations";
+      "--geomp",
+      Arg.Set_float geomp,
+      "X probability of success for geometric distribution of mutations";
 
-    "--subatom-mutp", Arg.Set_float subatom_mutp,
-    "X use X as subatom mutation rate";
+      "--subatom-mutp",
+      Arg.Set_float subatom_mutp,
+      "X use X as subatom mutation rate";
 
-    "--subatom-constp", Arg.Set_float subatom_constp,
-    "X use X as subatom constant rate";
+      "--subatom-constp",
+      Arg.Set_float subatom_constp,
+      "X use X as subatom constant rate";
 
-    "--continue", Arg.Set continue,
-    " Continue search after repair has been found.  Default: false";
+      "--continue",
+      Arg.Set continue,
+      " Continue search after repair has been found.  Default: false";
 
-    "--best-edit-rule", Arg.Set_string best_edit_rule,
-    "X use X to rank possible edits in adaptive search" ;
+      "--best-edit-rule",
+      Arg.Set_string best_edit_rule,
+      "X use X to rank possible edits in adaptive search";
 
-    "--exclude-edits", Arg.Set_string excluded_edits_str,
-    "X exclude all edits specified in X when running repair (space-seperated)" ;
+      "--exclude-edits",
+      Arg.Set_string excluded_edits_str,
+      "X exclude all edits specified in X when running repair (space-seperated)";
 
-    "--pd-mutp", Arg.Set_float pd_mutp,
-    "X use X as the binomial mutation rate in exploration proactive diversity search";
+      "--pd-mutp",
+      Arg.Set_float pd_mutp,
+      "X use X as the binomial mutation rate in exploration proactive diversity search";
 
-    "--eviction-strategy", Arg.Set_string eviction_strategy,
-    "X strategy for evicting from the steady-state popultion (random,tournament,worst)";
+      "--eviction-strategy",
+      Arg.Set_string eviction_strategy,
+      "X strategy for evicting from the steady-state popultion (random,tournament,worst)";
 
-    "--fitness-log", Arg.Set_string fitness_log,
-    "X log pop fitness to CSV file; used for steady-state where pop fitness is not clear from debug log";
+      "--fitness-log",
+      Arg.Set_string fitness_log,
+      "X log pop fitness to CSV file; used for steady-state where pop fitness is not clear from debug log";
 
-    "--disable-reduce-fix-space", Arg.Set disable_reduce_fix_space,
-    " Disable fix space reductions.  Default: false";
+      "--disable-reduce-fix-space",
+      Arg.Set disable_reduce_fix_space,
+      " Disable fix space reductions.  Default: false";
 
-    "--disable-reduce-search-space", Arg.Set disable_reduce_search_space,
-    " Disable search (fault) space reductions.  Default: false";
-  ]
+      "--disable-reduce-search-space",
+      Arg.Set disable_reduce_search_space,
+      " Disable search (fault) space reductions.  Default: false";
+    ] in
+  add_options options
 
 (**/**)
 

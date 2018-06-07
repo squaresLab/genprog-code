@@ -45,15 +45,17 @@ open Global
 let minimization = ref false
 let minimize_patch = ref false
 
-let _ =
-  options := !options @
-    [
-      "--minimization", Arg.Set minimization,
+let () =
+  let options = [
+      "--minimization",
+      Arg.Set minimization,
       " Attempt to minimize diff script using delta-debugging";
 
-      "--edit-script", Arg.Set minimize_patch,
+      "--edit-script",
+      Arg.Set minimize_patch,
       " Minimize the edit script, not the tree-based diff. Default: false";
-    ]
+    ] in
+  add_options options
 
 (** The structural signature of a variant allows us to compute a fine-grained
     diff between individuals using delta-debugging.  This implementation is based on

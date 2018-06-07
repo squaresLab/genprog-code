@@ -411,23 +411,36 @@ let incoming_pop_file = ref ""
 let usageMsg = "Program Repair Prototype (v2)\n"
 (**/**)
 
-let options = ref [
-  "--program", Arg.Set_string program_to_repair, "X repair X";
+let options =
+  ref [
+      "--program",
+      Arg.Set_string program_to_repair,
+      "X repair X";
 
-  "--seed", Arg.Set_int random_seed, "X use X as random seed";
+      "--seed",
+      Arg.Set_int random_seed,
+      "X use X as random seed";
 
-  "--pos-tests", Arg.Set_int pos_tests, "X number of positive tests";
+      "--pos-tests",
+      Arg.Set_int pos_tests,
+      "X number of positive tests";
 
-  "--neg-tests", Arg.Set_int neg_tests, "X number of negative tests";
+      "--neg-tests",
+      Arg.Set_int neg_tests,
+      "X number of negative tests";
 
-  "--search", Arg.Set_string search_strategy,
-  "X use strategy X (brute, distributed, ga, neutral, oracle, walk)";
+      "--search",
+      Arg.Set_string search_strategy,
+      "X use strategy X (brute, distributed, ga, neutral, oracle, walk)";
 
-  "--gui", Arg.Set gui, " enable phone GUI demo-based output. gui";
+      "--gui",
+      Arg.Set gui,
+      " enable phone GUI demo-based output. gui";
 
-  "--quiet", Arg.Set quiet, " disable all debug output. quiet";
-
-]
+      "--quiet",
+      Arg.Set quiet,
+      " disable all debug output. quiet";
+    ]
 
 let validators : (unit -> unit) list ref = ref []
 
@@ -557,6 +570,13 @@ let deprecated_and_simulable = [
     let str = Printf.sprintf "--generations 0 --popsize 0" in
       new_deprecated_args := !new_deprecated_args^str), "";
 ]
+
+let add_option flag arg description =
+  options := !options @ [flag, arg, description]
+
+let add_options options =
+  List.iter (fun (flag, arg, description) ->
+      add_option flag arg description) options
 
 let usage_function aligned usage_msg x =
   debug "usage: unknown option %s\n" x;

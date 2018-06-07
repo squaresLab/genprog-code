@@ -70,36 +70,44 @@ let ignore_equiv_appends = ref false
 let ignore_string_equiv_fixes = ref false
 let ignore_untyped_returns = ref false
 
-let _ =
-  options := !options @
-    [
-      "--semantic-check", Arg.Set_string semantic_check,
-      " limit CIL mutations by requiring matching variables" ;
+let () =
+  let options = [ "--semantic-check",
+                  Arg.Set_string semantic_check,
+                  " limit CIL mutations by requiring matching variables" ;
 
-      "--mt-cov", Arg.Set multithread_coverage,
-      "  instrument for coverage with locks.  Avoid if possible.";
+                  "--mt-cov",
+                  Arg.Set multithread_coverage,
+                  "  instrument for coverage with locks.  Avoid if possible.";
 
-      "--uniq", Arg.Set uniq_coverage,
-      "  print each visited stmt only once";
+                  "--uniq",
+                  Arg.Set uniq_coverage,
+                  "  print each visited stmt only once";
 
-      "--swap-bug", Arg.Set swap_bug,
-      " swap is implemented as in ICSE 2012 GMB experiments." ;
+                  "--swap-bug",
+                  Arg.Set swap_bug,
+                  " swap is implemented as in ICSE 2012 GMB experiments." ;
 
-      "--ignore-dead-code", Arg.Set ignore_dead_code,
-      " do not make known-dead mutations." ;
+                  "--ignore-dead-code",
+                  Arg.Set ignore_dead_code,
+                  " do not make known-dead mutations." ;
 
-      "--ignore-standard-headers", Arg.Set ignore_standard_headers,
-      " do not mutate C library #include headers." ;
+                  "--ignore-standard-headers",
+                  Arg.Set ignore_standard_headers,
+                  " do not mutate C library #include headers." ;
 
-      "--ignore-equiv-appends", Arg.Set ignore_equiv_appends,
-      " do not make equivalent append mutations." ;
+                  "--ignore-equiv-appends",
+                  Arg.Set ignore_equiv_appends,
+                  " do not make equivalent append mutations." ;
 
-      "--ignore-string-equiv-fixes", Arg.Set ignore_string_equiv_fixes,
-      " do not consider string-equivalent fixes twice." ;
+                  "--ignore-string-equiv-fixes",
+                  Arg.Set ignore_string_equiv_fixes,
+                  " do not consider string-equivalent fixes twice." ;
 
-      "--ignore-untyped-returns", Arg.Set ignore_untyped_returns,
-      " do not insert 'return' if the types mismatch." ;
-    ]
+                  "--ignore-untyped-returns",
+                  Arg.Set ignore_untyped_returns,
+                  " do not insert 'return' if the types mismatch." ;
+                ] in
+  add_options options
 (**/**)
 
 (** {8 High-level CIL representation types/utilities } *)

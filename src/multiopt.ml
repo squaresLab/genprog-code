@@ -57,14 +57,21 @@ open Population
 let minimize = ref false
 let no_inf = ref false
 let num_objectives = ref 2  (* number of objectives *)
-let _ =
-  options := !options @ [
-    "--multiopt-minimize", Arg.Set minimize, " minimize multiopt objective";
+let () =
+  let options = [
+      "--multiopt-minimize",
+      Arg.Set minimize,
+      " minimize multiopt objective";
 
-    "--multiopt-no-inf", Arg.Set no_inf, " avoid infinite values";
+      "--multiopt-no-inf",
+      Arg.Set no_inf,
+      " avoid infinite values";
 
-    "--num-objectives", Arg.Set_int num_objectives, "X expect X objective values";
-  ]
+      "--num-objectives",
+      Arg.Set_int num_objectives,
+      "X expect X objective values";
+    ] in
+  add_options options
 
 (* The implementation of NGSA-II below requires O(n^2) fitness lookups. The
    md5sum-based fitness cache from the Rep module is much faster than

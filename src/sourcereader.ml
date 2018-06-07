@@ -52,11 +52,17 @@ open Global
 let orig_file = ref ""
 let orig_rev = ref ""
 
-let _ =
-  options := !options @ [
-    "--change-original", Arg.Set_string orig_file, "X Try to automatically apply repairs to original file X";
-    "--original-revision", Arg.Set_string orig_rev, "X Set the revision number X of the original revision, for change-original";
-  ]
+let () =
+  let options = [
+      "--change-original",
+      Arg.Set_string orig_file,
+      "X Try to automatically apply repairs to original file X";
+
+      "--original-revision",
+      Arg.Set_string orig_rev,
+      "X Set the revision number X of the original revision, for change-original";
+    ] in
+  add_options options
 
 let source_code = ref [] (* Original source code *)
 let changed_source_code = ref [] (* Repaired code *)

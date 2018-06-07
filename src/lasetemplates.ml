@@ -44,15 +44,17 @@ let dealloc_api = ref "free"
 let paired_function_file = ref ""
 let paired_functions = ref []
 
-let _ =
-  options := !options @
-    [
-      "--lase-deallocation-api", Arg.Set_string dealloc_api,
-      "function API for deallocating memory to prevent leaks" ;
+let () =
+  let options = [
+      "--lase-deallocation-api",
+      Arg.Set_string dealloc_api,
+      "function API for deallocating memory to prevent leaks";
 
-      "--lase-paired-functions", Arg.Set_string paired_function_file,
+      "--lase-paired-functions",
+      Arg.Set_string paired_function_file,
       "CSV contains function-to-wrap, prefix-function, and suffix-function"
-    ]
+    ] in
+  add_options options
 (**/**)
 
 let configure_templates () =

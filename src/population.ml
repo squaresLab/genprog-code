@@ -56,21 +56,29 @@ let output_format = ref "txt"
    set *)
 let tournament_p = ref 1.00
 
-let _ =
-  options := !options @ [
-    "--popsize", Arg.Set_int popsize, "X variant population size";
+let () =
+  let options = [
+      "--popsize",
+      Arg.Set_int popsize,
+      "X variant population size";
 
-    "--crossover", Arg.Set_string crossover,
-    "X use X as crossover [one,back,subset,flat]";
+      "--crossover",
+      Arg.Set_string crossover,
+      "X use X as crossover [one,back,subset,flat]";
 
-    "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
+      "--crossp",
+      Arg.Set_float crossp,
+      "X use X as crossover rate";
 
-    "--format", Arg.Set_string output_format,
-    "X format for serialized population.  Options: bin/binary, txt.  Default: txt";
+      "--format",
+      Arg.Set_string output_format,
+      "X format for serialized population.  Options: bin/binary, txt.  Default: txt";
 
-    "--tournament-size", Arg.Set_int tournament_k,
-    "X use x as tournament size";
-  ]
+      "--tournament-size",
+      Arg.Set_int tournament_k,
+      "X use x as tournament size";
+    ] in
+  add_options options
 
 let population_version = "1"
 
