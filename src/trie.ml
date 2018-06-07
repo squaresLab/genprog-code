@@ -132,7 +132,7 @@ let iter f m = fold (fun k v _ -> f k v) m ()
 let size m = fold (fun _ _ n -> n + 1) m 0
 
 let find_prefix x m =
-  let _, map, value = unzip [] x m in
+  ignore (unzip [] x m);
   List.rev (fold (fun k v lst -> (k, v) :: lst) m [])
 
 let contains_prefix_of x m =
