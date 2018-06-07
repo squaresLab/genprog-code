@@ -1294,10 +1294,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
           note_success variant original !variants_explored_sofar ;
           raise (Found_repair(variant#name()))
         end;
-
-      let cf_after = !compile_failures in
-      let failed_to_compile = cf_after <> cf_before in
-      variant#cleanup () ;
+      variant#cleanup ();
 
       (* update the model *)
       let fault_atom = fault_atom_of edit in
