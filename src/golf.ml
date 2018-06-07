@@ -596,7 +596,7 @@ let string_of_tau (t : tau) : string =
     string_of_tau' t
 
 (** Convert an lvalue to a string *)
-let rec string_of_lvalue (lv : lvalue) : string =
+let string_of_lvalue (lv : lvalue) : string =
   let contents = string_of_tau lv.contents
   and l = string_of_label lv.l in
     assert (pair_or_var lv.contents); (* do a consistency check *)
@@ -617,7 +617,7 @@ let print_path (p : lblinfo path) : unit =
       (PathHash.hash p)
 
 (** Print a list of tau elements, comma separated *)
-let rec print_tau_list (l : tau list) : unit =
+let print_tau_list (l : tau list) : unit =
   let rec print_t_strings = function
       h :: [] -> print_endline h
     | h :: t ->
@@ -1455,7 +1455,7 @@ let smart_alias_query (l : label) (l' : label) : bool =
   let dead_configs : config_map = CH.create 16 in
     (* the set of discovered configurations *)
   let discovered : config_map = CH.create 16 in
-  let rec filter_match (i : int) =
+  let filter_match (i : int) =
     B.filter (fun (b : lblinfo bound) -> i = b.index)
   in
   let rec simulate c l l' =
@@ -1672,7 +1672,7 @@ let rec tauPointsTo (l : tau) : absloc list =
     | Ref r -> r.rl :: tauPointsTo r.points_to
     | _ -> []
 
-let rec absloc_points_to (l : lvalue) : absloc list =
+let absloc_points_to (l : lvalue) : absloc list =
   tauPointsTo l.contents
 
 

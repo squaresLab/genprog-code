@@ -531,7 +531,7 @@ let compute_aliases = compute_may_aliases
 
 type absloc = A.absloc
 
-let rec lvalue_of_varinfo (vi : varinfo) : A.lvalue =
+let lvalue_of_varinfo (vi : varinfo) : A.lvalue =
   H.find lvalue_hash vi
 
 let lvalue_of_lval = traverse_lval
