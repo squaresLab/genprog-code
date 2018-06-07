@@ -1260,34 +1260,6 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
   in
   let find_best_edit = find_best get_edit_attr best_edit_rules in
 
-  let find_k_best_unsupered_edits k remaining =
-    (* places worst element in first position with List.sort *)
-    let my_compare a b =
-        if is_better get_edit_attr best_edit_rules a b
-        then 1 else if is_better get_edit_attr best_edit_rules b a then -1
-        else 0 in
-    let rec walk best_sofar remaining =
-      match best_sofar, remaining with
-      | [], _ -> failwith "find_k_best_unsupered_edits"
-      | _, [] -> best_sofar
-      | (worst_of_best :: rest_of_best) ,
-        (first_of_next :: rest_of_next) ->
-        if is_better get_edit_attr best_edit_rules
-                     first_of_next worst_of_best then begin
-          let new_best = List.sort my_compare
-                         (first_of_next :: rest_of_best) in
-          walk new_best rest_of_next
-        end else begin
-          walk best_sofar rest_of_next
-        end
-    in
-    let first_k, rest = split_nth remaining k in
-    let first_k = List.sort my_compare first_k in
-    let best_k = (walk first_k rest) in
-    best_k
-  in
-
-
   let variants_explored_sofar = ref 0 in
 
   let rec search_edits remaining =
