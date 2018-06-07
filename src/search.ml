@@ -775,7 +775,10 @@ let pd_oracle_search (orig : ('a,'b) Rep.representation) (starting_genome : stri
       the_repair#deserialize starting_genome
     else
       the_repair#load_genome_from_string starting_genome;
-    let allowed t = match t with | Positive _ -> true | Negative _ -> false in
+    let allowed = function
+      | Positive _ -> true
+      | Negative _ | Single_Fitness -> false
+    in
     let fneutral = Fitness.test_to_first_failure ~allowed the_repair in
     if fneutral then
        let allowed t = match t with | Positive _ -> false | Negative _ -> true in
