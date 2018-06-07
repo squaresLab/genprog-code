@@ -1506,16 +1506,21 @@ let pd_explore (original : ('a,'b) Rep.representation) incoming_pop =
   let determine_neutrality var cneutral cneg =
      begin
       (* run only the positive tests to first failure to determine neutrality *)
-       let allowed t = match t with
+       let allowed = function
         | Positive _ -> true
         | Negative _ -> false
+        | Single_Fitness -> failwith "Single fitness unimplemented here"
       in
       let fNeutral = Fitness.test_to_first_failure ~allowed var in
       if fNeutral then begin
         debug "\t+ %s is neutral\n" (var#name ()) ;
 	incr cneutral;
         (* determine if it passes any negative tests here *)
-        let neg_only t = match t with | Positive _ -> false | Negative _ -> true in
+    let neg_only = function
+      | Positive _ -> false
+      | Negative _ -> true
+      | Single_Fitness -> failwith "Single fitness unimplemented here"
+    in
 	let cpass = Fitness.count_tests_passed neg_only var in
 	debug "\t %s passed %d negative tests\n" (var#name()) cpass ;
 	if cpass > 0 then incr cneg
