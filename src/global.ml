@@ -43,7 +43,6 @@
     utilities are self-explanatory/short, thus minimal commenting. *)
 open Str
 open Printf
-open Pervasives
 
 (**/**)
 (* whether we're printing for the phone demo *)
