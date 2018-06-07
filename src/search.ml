@@ -777,11 +777,16 @@ let pd_oracle_search (orig : ('a,'b) Rep.representation) (starting_genome : stri
       the_repair#load_genome_from_string starting_genome;
     let allowed = function
       | Positive _ -> true
-      | Negative _ | Single_Fitness -> false
+      | Negative _ -> false
+      | Single_Fitness -> failwith "Single fitness unimplemented"
     in
     let fneutral = Fitness.test_to_first_failure ~allowed the_repair in
     if fneutral then
-       let allowed t = match t with | Positive _ -> false | Negative _ -> true in
+      let allowed = function
+        | Positive _ -> false
+        | Negative _ -> true
+        | Single_Fitness -> failwith "Single fitness unimplemented"
+      in
        let cpass = Fitness.count_tests_passed allowed the_repair in
        debug "%s was neutral and passed %d negative tests\n" (the_repair#name()) cpass
     else
