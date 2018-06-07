@@ -43,9 +43,6 @@
     utilities are self-explanatory/short, thus minimal commenting. *)
 open Str
 open Printf
-open Hashtbl
-open List
-open Unix
 open Pervasives
 
 (**/**)

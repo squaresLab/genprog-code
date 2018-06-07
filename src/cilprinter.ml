@@ -41,7 +41,6 @@
 open Global
 open Cil
 open Rep
-open Pretty
 module E = Errormsg
 
 let width = 32767

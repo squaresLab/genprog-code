@@ -43,7 +43,6 @@
     -> test a subset of all available
     -> test by calling an outside script and reading in a resulting file *)
 
-open Printf
 open Global
 open Rep
 

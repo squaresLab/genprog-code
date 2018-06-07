@@ -64,11 +64,8 @@
  * could move it to L2 because "y=y+1" and "z=5" share no relevant
  * (e.e., "read-after-write") dependencies.
  *)
-open Printf
 open Global
 open Cil
-open Rep
-open Pretty
 open Knownfuns
 
 (*

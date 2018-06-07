@@ -41,7 +41,6 @@
     produce new Cil ASTs by applying a (potentially partial) cdiff edit script
     to an existing AST *)
 
-open Pretty
 open Printf
 open Cil
 open Global

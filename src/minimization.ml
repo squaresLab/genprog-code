@@ -40,10 +40,7 @@
     differences between a repaired variant and the original.  Can minimize
     either the edit history list or a list of cdiff changes (provided by the
     cdiff module).  *)
-open Cil
 open Global
-open Cdiff
-open Printf
 
 let minimization = ref false
 let minimize_patch = ref false
