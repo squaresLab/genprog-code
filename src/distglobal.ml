@@ -44,6 +44,7 @@ open Unix
 
 (** number of participating nodes *)
 let num_comps = ref 2
+
 (** port for the server *)
 let server_port = ref 65000
 let server_socket = socket PF_INET SOCK_STREAM 0
