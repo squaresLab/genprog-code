@@ -284,31 +284,32 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
           in
           match mut with
           | Delete_mut ->
-            let rep' = rep#copy () in
-              rep'#delete fault;
-              lase, f a rep' w
+             let rep' = rep#copy () in
+             rep'#delete fault;
+             lase, f a rep' w
           | Append_mut ->
-            let sources = rep#append_sources fault in
-            lase, fold2 (fun rep d s -> rep#append d s) a sources
+             let sources = rep#append_sources fault in
+             lase, fold2 (fun rep d s -> rep#append d s) a sources
           | Swap_mut ->
-            let sources = rep#swap_sources fault in
-            lase, fold2 (fun rep d s -> rep#swap d s) a sources
+             let sources = rep#swap_sources fault in
+             lase, fold2 (fun rep d s -> rep#swap d s) a sources
           | Replace_mut ->
-            let sources = rep#replace_sources fault in
-            lase, fold2 (fun rep d s -> rep#replace d s) a sources
+             let sources = rep#replace_sources fault in
+             lase, fold2 (fun rep d s -> rep#replace d s) a sources
           | Lase_Template_mut ->
-            let p3 =
-              1.0 /. (float_of_int (map_cardinal Lasetemplates.templates))
-            in
-            let lase =
-              StringMap.fold (fun n _ lase ->
-                let ps = try StringMap.find n lase with Not_found -> [] in
-                StringMap.add n ((w *. p3) :: ps) lase
-              ) Lasetemplates.templates lase
-            in
-              lase, a
-        ) (lase, a) (rescale (rep#available_mutations fault))
-      ) (StringMap.empty, a) (rescale (rep#get_faulty_atoms()))
+             let p3 =
+               1.0 /. (float_of_int (map_cardinal Lasetemplates.templates))
+             in
+             let lase =
+               StringMap.fold (fun n _ lase ->
+                   let ps = try StringMap.find n lase with Not_found -> [] in
+                   StringMap.add n ((w *. p3) :: ps) lase
+                 ) Lasetemplates.templates lase
+             in
+             lase, a
+          | _ -> failwith "Unimplemented mutation"
+          ) (lase, a) (rescale (rep#available_mutations fault))
+        ) (StringMap.empty, a) (rescale (rep#get_faulty_atoms()))
     in
       StringMap.fold (fun n ps a ->
         let rep' = rep#copy () in
