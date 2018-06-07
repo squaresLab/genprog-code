@@ -478,18 +478,19 @@ let stmt_to_typelabel (s : Cil.stmt) =
     ) il
   in
   let skind = match s.skind with
-    | Instr(il)  -> Instr(convert_il il)
-    | Return(eo,l) -> Return(convert_exp_opt eo,dummyLoc)
-    | Goto(sr,l) -> Goto(sr,dummyLoc)
-    | Break(l) -> Break(dummyLoc)
-    | Continue(l) -> Continue(dummyLoc)
-    | If(e,b1,b2,l) -> If(convert_exp e,dummyBlock,dummyBlock,l)
-    | Switch(e,b,sl,l) -> Switch(convert_exp e,dummyBlock,[],l)
-    | Loop(b,l,so1,so2) -> Loop(dummyBlock,l,None,None)
-    | Block(block) -> Block(dummyBlock)
-    | TryFinally(b1,b2,l) -> TryFinally(dummyBlock,dummyBlock,dummyLoc)
-    | TryExcept(b1,(il,e),b2,l) ->
-      TryExcept(dummyBlock,(convert_il il,convert_exp e),dummyBlock,dummyLoc)
+    | Instr (il)  -> Instr (convert_il il)
+    | Return (eo, _) -> Return (convert_exp_opt eo, dummyLoc)
+    | Goto (sr, _) -> Goto (sr, dummyLoc)
+    | ComputedGoto (e, _) -> ComputedGoto (convert_exp e, dummyLoc)
+    | Break _ -> Break (dummyLoc)
+    | Continue _ -> Continue (dummyLoc)
+    | If (e, _, _, l) -> If (convert_exp e, dummyBlock, dummyBlock, l)
+    | Switch (e, _, _, l) -> Switch (convert_exp e, dummyBlock, [], l)
+    | Loop (_, l, _, _) -> Loop (dummyBlock, l, None, None)
+    | Block _ -> Block (dummyBlock)
+    | TryFinally _ -> TryFinally (dummyBlock, dummyBlock, dummyLoc)
+    | TryExcept (_, (il, e), _, _) ->
+       TryExcept(dummyBlock, (convert_il il, convert_exp e), dummyBlock, dummyLoc)
   in
   let s' = { s with skind = skind ; labels = labels } in
   let doc = dn_stmt () s' in
