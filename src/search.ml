@@ -1095,11 +1095,13 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
   ) fault_localization ;
   let num_pre_appends = llen !appends in
   if(List.length !excluded_edits) > 0 then begin
-    appends := List.filter
-      (fun (Append(dest,src),_,_) ->
-      	let app_str = (Printf.sprintf "a(%d,%d)" dest src) in
-          not (List.mem app_str !excluded_edits))
-      !appends
+      let appends_filter = function
+        | Append (dest, src), _, _ ->
+           let app_str = Printf.sprintf "a(%d,%d)" dest src in
+           not (List.mem app_str !excluded_edits)
+        | _ -> false
+      in
+      appends := List.filter appends_filter !appends
   end ;
   debug "excluded %d appends (from list of %d total edits)\n" (num_pre_appends-(llen !appends)) (llen !excluded_edits) ;
   let appends = List.sort (fun (_,_,a) (_,_,b) ->
