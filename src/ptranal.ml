@@ -250,7 +250,7 @@ and analyze_expr (e : exp ) : A.tau =
       | BinOp (op, e, e', t) -> A.join (analyze_expr e) (analyze_expr e')
       (*
       | Question (_, e, e', _) -> A.join (analyze_expr e) (analyze_expr e')
-      *) 
+      *)
       | CastE (t, e) -> analyze_expr e
       | AddrOf l ->
           if !fun_ptrs_as_funs && isFunctionType (typeOfLval l) then
@@ -258,7 +258,7 @@ and analyze_expr (e : exp ) : A.tau =
           else A.address (analyze_lval l)
           (*
       | AddrOfLabel _ -> failwith "not implemented yet" (* XXX *)
-      *) 
+      *)
       | StartOf l -> A.address (analyze_lval l)
       | AlignOfE _ -> A.bottom ()
       | SizeOfE _ -> A.bottom ()
@@ -325,7 +325,7 @@ let rec analyze_stmt (s : stmt ) : unit =
     | Goto (s', l) -> () (* analyze_stmt(!s') *)
     (*
     | ComputedGoto (e, l) -> ()
-    *) 
+    *)
     | If (e, b, b', l) ->
         (* ignore the expression e; expressions can't be side-effecting *)
         analyze_block b;

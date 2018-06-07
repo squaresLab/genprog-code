@@ -38,7 +38,7 @@
  *)
 open Sys
 open Global
-(* sourcereader.ml 
+(* sourcereader.ml
  *
  * Read a source file, creating an
  * array of strings to represent its
@@ -52,11 +52,11 @@ open Global
 let orig_file = ref ""
 let orig_rev = ref ""
 
-let _ = 
+let _ =
   options := !options @ [
     "--change-original", Arg.Set_string orig_file, "X Try to automatically apply repairs to original file X";
     "--original-revision", Arg.Set_string orig_rev, "X Set the revision number X of the original revision, for change-original";
-  ] 
+  ]
 
 let source_code = ref [] (* Original source code *)
 let changed_source_code = ref [] (* Repaired code *)
@@ -83,7 +83,7 @@ let pivot_line = ref max_int
  * the way deletions and insertions work. If we delete every line
  * from the last one to the first, the relative position array will
  * declare every modifier to be 0. This could result in out-of-bounds
- * insertions on an empty patch, or something like that. Even with 
+ * insertions on an empty patch, or something like that. Even with
  * checks the behavior could be weird. Requires more thought. *)
 let relative_positions = ref []
 
@@ -202,7 +202,7 @@ let rec insert_line_helper (theList : string list) line line_number = begin
     match theList with
       []  -> []
     |   h::t    -> h::( insert_line_helper t line (line_number - 1))
-end 
+end
 
 (* insert_line
  * Insert a line of code into the modified code.
@@ -232,12 +232,12 @@ end
 let insert_line_list line_list line_number = begin
   List.iter (fun x -> insert_line x line_number
   ) line_list
-end 
+end
 
 (* delete_line_helper
  * Does the actual deletion for delete_line via recursion and pattern matching.
  * INPUT: (always !changed_source_code)
- * INPUT: Line number where code is to be deleted *) 
+ * INPUT: Line number where code is to be deleted *)
 let rec delete_line_helper (theList : string list) line_number = begin
   match theList with
     []  -> []
@@ -251,8 +251,8 @@ end
  * is a line from the original source file
  * INPUT: line number to delete *)
 let delete_line line_number = begin
-  let modifier = 
-    (List.nth !relative_positions line_number) + 
+  let modifier =
+    (List.nth !relative_positions line_number) +
       (List.nth !inserts_between_lines line_number) in
   (*
     if (line_number>(!pivot_line)) then (!global_line_adjustment)
@@ -265,7 +265,7 @@ let delete_line line_number = begin
     changed_source_code :=
       (delete_line_helper !changed_source_code (line_number + modifier));
     modify_positions line_number (-1) ;
-    modify_inserts line_number 
+    modify_inserts line_number
 end
 
 (* delete_line_list
@@ -282,7 +282,7 @@ end
 
 (* process_change_action
  * Go through one insert or delete based on an
- * input script (moves will be handled seperately). 
+ * input script (moves will be handled seperately).
  * The script will be a tuple containing an action
  * ("Insert" or "Delete"), a line number referring
  * to the appropriate location in the original source
@@ -358,10 +358,10 @@ let derive_change_script filename = begin
     with
       End_of_file -> close_in c; List.rev !tupleList
     |  Bad_op -> close_in c;
-      Printf.printf "Bad node operation. Repair cannot be automatically applied.\n"; 
+      Printf.printf "Bad node operation. Repair cannot be automatically applied.\n";
       bad_flag := true;
       List.rev !tupleList
-        
+
 end
 
 (* write_file

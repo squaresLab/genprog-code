@@ -3,25 +3,25 @@ import ply.yacc as yacc
 import time, sys, traceback
 
 #enum { stuff, stuff2 } not handled correctly
-#array newlines are not counted correctly                        
+#array newlines are not counted correctly
 class OneAtomPerLine:
     def __init__(self, tokens, filepath, ext, printoption):
         self.tokens = tokens
-        self.filepath = filepath 
+        self.filepath = filepath
         self.ext = ext
         self.printoption = printoption
         #extention of the new file
         self.newext = '.atoms'
         self.data = []
-        
-        
+
+
         self.build_lines()
         self.write_data()
     def __str__(self):
         data = ''
         for line in self.data:
             data += line
-        return data    
+        return data
     def build_lines(self):
         current_line = ''
         commentflag = 0
@@ -31,7 +31,7 @@ class OneAtomPerLine:
         for token in self.tokens:
             value = token.value
             typ = token.type
-            lineno = str(token.lineno) 
+            lineno = str(token.lineno)
             if ((typ == "WORD") or (typ == "STRING") or
                 (typ == "CHAR") or (typ == "DIVIDE") or
                 (typ == "ARRAY")):
@@ -62,9 +62,9 @@ class OneAtomPerLine:
             elif (typ == "RBRACE"):
                 current_line = current_line.replace('\n','')
                 data.append(lineno + '\n')
-                
+
                 if (current_line != "") and (current_line[len(current_line) - 1] != '\n'):
-                  dataline1 = current_line + '\n' 
+                  dataline1 = current_line + '\n'
                   dataline2 = value + '\n'
                   data.append(dataline1)
                   data.append(lineno + '\n')
@@ -74,7 +74,7 @@ class OneAtomPerLine:
                   data.append(dataline)
                 newlineno = ''
                 current_line = ''
-                
+
             elif (typ == "FOR"):
                 current_line += value
                 current_line = current_line.replace('\n','')
@@ -93,7 +93,7 @@ class OneAtomPerLine:
                     commentflag += 1
                     if self.printoption == 'True':
                         print "Warning: Comments should be ignored, change t_COMMENT to t_ignore_COMMENT"
-            else:  
+            else:
                 pass
                 #raise Exception("Given unhandled token type: " + str(typ))
 
@@ -103,7 +103,7 @@ class OneAtomPerLine:
         f = open(newfilename, 'w')
         f.writelines(self.data)
 
-        
+
 def make_data(filepath):
     data = ''
     f = open(filepath, 'r')
@@ -166,18 +166,18 @@ def tokenize(data, printopt=False):
         t.lexer.level += 1
         if t.lexer.level == 1:
             t.lexer.array_start = t.lexer.lexpos-length
-        
+
         t.type = "ARRAY"
         t.lexer.push_state('array')
         pass
     def t_array_error(t):
         print "Unable to parse value: "+ str(t.value[0])
         t.lexer.skip(1)
-        
+
     def t_array_WHITESPACE(t):
         r'(\n|\r|\t|[ ])+'
         pass
-        
+
     def t_array_STRING(t):
         r'\"(\\\\\\\")?(\\\"|[^\"])*?(\\\\)?\"'
         pass
@@ -210,17 +210,17 @@ def tokenize(data, printopt=False):
         r'\n'
         t.lexer.lineno += 1#len(t.value)
         #return t
-        pass    
+        pass
     def t_comment_end(t):
         r'[*]/'
         t.value = t.lexer.lexdata[t.lexer.comment_start:t.lexer.lexpos]
         t.type = "COMMENT"
-        t.lexer.begin('INITIAL')  
+        t.lexer.begin('INITIAL')
     def t_comment_STARNEWLINE(t):
         r'[*]\n|[*]\r\n'
         t.lexer.lineno += 1#len(t.value)
         #return t
-        pass        
+        pass
     def t_comment_COMMENT(t):
         #r'([^*/\n][*]*|[^/*\n]*[*])+'
         r'([^*\n]|[*][^/\n])+' #Anything is fine as long as it isnt a star,
@@ -237,7 +237,7 @@ def tokenize(data, printopt=False):
     t_comment_ignore = r''
 
 
-        
+
     def t_LBRACE(t):
         r'\{'
         return t
@@ -256,9 +256,9 @@ def tokenize(data, printopt=False):
         r'([^\"\'\{\};/\[\]\n])+|\[.*?\][ \t\r]*?[^\{\n]'
         return t
     t_SEMICOLON = ";"
-    
-    
-    
+
+
+
     def t_error(t):
         if t.value[0] == '\"':
             raise Exception("Error: unable to tokenize double quote: \". Most likely "+
@@ -270,7 +270,7 @@ def tokenize(data, printopt=False):
             raise Exception("Error unable to tokenize value: " + str(t.value[0]))
         #print "Unable to parse value: "+ str(t.value[0])
         t.lexer.skip(1)
-        
+
 
     lexer = lex.lex()
     lexer.input(data)
@@ -301,12 +301,10 @@ def main():
         printopt = sys.argv[3]
         if ext[0] == 'e':
             ext = ''
-    
+
     data = make_data(filepath+ext)
     tokenized = tokenize(data, printopt)
     parsed = OneAtomPerLine(tokenized,filepath, ext, printopt)
 
 
 main()
-
-

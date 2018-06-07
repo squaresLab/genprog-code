@@ -39,36 +39,35 @@
 open Global
 
 (*
- * Models of standard library functions for program analysis. 
+ * Models of standard library functions for program analysis.
  *
  * For example, it is often helpful to know that "sqrt" is a pure function
- * that does not change any global state. 
- *) 
+ * that does not change any global state.
+ *)
 
-let pure_function_names = 
+let pure_function_names =
 "abs labs llabs fabs div ldiv lldiv fmod remainder remquo fma fmax fmin fdim nan nanf nanl exp exp2 expm1 log log2 log10 log1p ilogb logb sqrt cbrt hypot pow sin cos tan asin acos atan atan2 sinh cosh tanh asinh acosh atanh erf erfc lgamma tgamma ceil floor trunc round lround llround nearbyint rint lrint llrint frexp ldexp modf scalbn scalbln nextafter nexttoward copysign isfinite isinf isnan isnormal signbit cabs carg cimag creal conj cproj cexp clog csqrt cpow csin ccos ctan casin cacos catan csinh ccosh ctanh casinh cacosh catanh iswalnum iswalpha iswlower iswupper iswdigit iswxdigit iswcntrl iswgraph iswspace iswblank iswprint iswpunct towlower towupper iswctype towctrans wctype wctrans difftime time clock asctime ctime strftime wcsftime gmtime localtime mktime CLOCKS_PER_SEC tm time_t clock_t malloc calloc tmpfile tmpnam localeconv getenv strlen wcslen strcmp wcscmp strncmp wcsncmp strcoll wcscoll strchr index rindex wcschr strrchr wcsrchr strspn wcsspn strcspn wcscspn strpbrk wcspbrk strstr wcsstr strerror memcmp bcmp memchr mblen mbsinit mbrlen atof atoi atol atoll strtof strtod strtold wcstof wcstod wcstold strtol strtoll wcstol wcstoll strtoul strtoull wcstoul wcstoull strdup _ctype_b_loc strcmp strncmp strcasecmp strncasecmp rawmemchr memrchr strchrnul memmem strnlen strsignal"
 
-let io_function_names = 
+let io_function_names =
 "abort exit atexit quick_exit at_quick_exit system fopen freopen fflush fclose setbuf setvbuf fwide fread fwrite fgetc fgetwc getc getwc fgets fgetws fputc fputwc putc putwc fputs fputws getchar getwchar gets putchar putwchar puts ungetc ungetwc scanf wscanf fscanf fwscanf vscanf vwscanf vfscanf vfwscanf printf fprintf wprintf fwprintf vprintf vfprintf vwprintf vfwprintf perror ftell fgetpos fseek fsetpos rewind clearerr feof ferror remove rename"
 
-let whitespace_newline_regexp = Str.regexp "[ \t\r\n]+" 
+let whitespace_newline_regexp = Str.regexp "[ \t\r\n]+"
 
-let pure_function_set : StringSet.t = 
-  let names = Str.split whitespace_newline_regexp pure_function_names in 
-  List.fold_left (fun acc elt -> 
+let pure_function_set : StringSet.t =
+  let names = Str.split whitespace_newline_regexp pure_function_names in
+  List.fold_left (fun acc elt ->
     StringSet.add elt (StringSet.add ("_" ^ elt) acc)
-  ) (StringSet.empty) names 
+  ) (StringSet.empty) names
 
-let io_function_set : StringSet.t = 
-  let names = Str.split whitespace_newline_regexp io_function_names in 
-  List.fold_left (fun acc elt -> 
-    StringSet.add elt (StringSet.add ("_" ^ elt) 
+let io_function_set : StringSet.t =
+  let names = Str.split whitespace_newline_regexp io_function_names in
+  List.fold_left (fun acc elt ->
+    StringSet.add elt (StringSet.add ("_" ^ elt)
       (StringSet.add ("_IO_" ^ elt) acc))
-  ) (StringSet.empty) names 
+  ) (StringSet.empty) names
 
-let is_pure_function name = 
-  StringSet.mem (name) pure_function_set 
+let is_pure_function name =
+  StringSet.mem (name) pure_function_set
 
-let is_io_function name = 
-  StringSet.mem (name) io_function_set  
-
+let is_io_function name =
+  StringSet.mem (name) io_function_set

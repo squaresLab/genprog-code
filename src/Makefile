@@ -54,26 +54,26 @@ MBITS := $(if $(shell touch null.ml ; $(OCAMLOPT) -c null.ml ; file null.o | gre
 
 ###
 #
-# You should not have to change anything below this line. 
+# You should not have to change anything below this line.
 #
 ###
 
 # We use an internal utility to auto-generate token information,
-# visitor code and pretty-printing code from ocaml type definitions. 
-# If you don't change "tokens.type" or "jabs.ml" you won't need this. 
+# visitor code and pretty-printing code from ocaml type definitions.
+# If you don't change "tokens.type" or "jabs.ml" you won't need this.
 
 ALL = repair nhtserver distserver test-cache-reader
 all: $(ALL)
 
-%.cmo: %.ml 
-	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
+%.cmo: %.ml
+	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi
 	$(OCAMLC) -c -g $*.ml
-	@$(OCAMLDEP) $*.ml > $*.d 
+	@$(OCAMLDEP) $*.ml > $*.d
 
-%.cmx: %.ml 
-	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
+%.cmx: %.ml
+	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi
 	$(OCAMLOPT) -c $*.ml
-	@$(OCAMLDEP) $*.ml > $*.d 
+	@$(OCAMLDEP) $*.ml > $*.d
 
 %.cmi: %.mli
 	$(OCAMLC) -c -g $*.mli
@@ -84,8 +84,8 @@ all: $(ALL)
 # NOTE: Module order is important!  OCaml module dependencies cannot
 # be cyclic, and the order presented must respect the dependency order.
 
-ifdef USE_PELLACINI 
-PELLACINI = pellacini.cmo cgrep.cmo 
+ifdef USE_PELLACINI
+PELLACINI = pellacini.cmo cgrep.cmo
 endif
 
 BASE_MODULES = \
@@ -153,10 +153,10 @@ version.ml:
 
 lib: ../obj/genprog.cmxa
 
-repair: $(REPAIR_MODULES:.cmo=.cmx) 
+repair: $(REPAIR_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) cil.cmxa $^
 
-repair.chroot:  $(REPAIR_MODULES:.cmo=.cmx) 
+repair.chroot:  $(REPAIR_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) cil.cmxa $^ -cc "gcc -Wl,-dynamic-linker,/lib64-20/ld-linux-x86-64.so.2,-rpath=/lib64-20"
 
 repair.byte: $(REPAIR_MODULES)
@@ -172,7 +172,7 @@ NHT_MODULES = \
   global.cmo \
   nhtserver.cmo
 
-nhtserver: $(NHT_MODULES:.cmo=.cmx) 
+nhtserver: $(NHT_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) $^
 
 DIST_SERVER_MODULES = \
@@ -180,7 +180,7 @@ DIST_SERVER_MODULES = \
   distglobal.cmo \
   distserver.cmo
 
-distserver: $(DIST_SERVER_MODULES:.cmo=.cmx) 
+distserver: $(DIST_SERVER_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) $^
 
 test-cache-reader:

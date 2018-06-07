@@ -37,8 +37,8 @@
  *
  *)
 
-(* 
- * Program Repair Prototype (v2) 
+(*
+ * Program Repair Prototype (v2)
  *
  * This script accepts standard genprog configuration files.  An
  * additional edit option is accepted which may be used to specify
@@ -59,27 +59,27 @@ open Population
 
 let representation = ref ""
 let edits = ref ""
-let time_at_start = Unix.gettimeofday () 
+let time_at_start = Unix.gettimeofday ()
 
 let _ =
   options := !options @
   [
     "--rep", Arg.Set_string representation, "X representation X (c,txt,java)" ;
     "--edits", Arg.Set_string edits, "X edits to apply to representation" ;
-  ] 
+  ]
 
-let debug fmt = 
+let debug fmt =
   let k result = begin
-    output_string Pervasives.stdout result ; 
-    flush Pervasives.stdout ; 
+    output_string Pervasives.stdout result ;
+    flush Pervasives.stdout ;
   end in
-    Printf.kprintf k fmt 
+    Printf.kprintf k fmt
 
 (** {b process} base_file_name extension new_representation loads the
     representation, applies the edit operations, and evaluates
     fitness.  *)
 let process base ext (rep :('a,'b) Rep.representation) =
-  let get_fitness variant = 
+  let get_fitness variant =
     if test_fitness (-1) variant then -1.0
                                  else get_opt (variant#fitness()) in
   let apply_edits (rep :('a,'b) Rep.representation) =
@@ -102,7 +102,7 @@ let process base ext (rep :('a,'b) Rep.representation) =
             raise e;
         end
               ) (Str.split (Str.regexp_string " ") !edits) in
-  (* load the rep *) 
+  (* load the rep *)
   rep#load base;
   (* Apply the requested edit operations *)
   apply_edits rep;
@@ -119,45 +119,45 @@ let edit () = begin
   (* parse command-line arguments *)
   parse_options_with_deprecated ();
 
-  if !program_to_repair = "" then begin 
+  if !program_to_repair = "" then begin
     abort "main: no program to repair (try --help)\n" ;
-  end ; 
+  end ;
 
   (* inhibit unwanted printing *)
   quiet := true;
 
   (* Figure out and initialize the representation and then run `process' *)
   let base, real_ext = split_ext !program_to_repair in
-  let filetype = 
+  let filetype =
     if !representation = "" then real_ext else !representation in
 
-    if real_ext = "txt" && real_ext <> filetype || !Rep.prefix <> "./" then 
-      Rep.use_subdirs := true; 
+    if real_ext = "txt" && real_ext <> filetype || !Rep.prefix <> "./" then
+      Rep.use_subdirs := true;
 
-    match String.lowercase filetype with 
+    match String.lowercase filetype with
     | "s" | "asm" ->
-    Global.extension := ".s" ; 
+    Global.extension := ".s" ;
       process base real_ext ((new Asmrep.asmRep) :>('a,'b) Rep.representation)
-    | "c" | "i" | "cilpatch" | "cil" -> 
+    | "c" | "i" | "cilpatch" | "cil" ->
       Global.extension := ".c";
       Cil.initCIL ();
       process base real_ext ((new Cilrep.patchCilRep) :> ('c,'d) Rep.representation)
-    | "cilast" -> 
+    | "cilast" ->
       Global.extension := ".c";
       Cil.initCIL ();
       process base real_ext ((new Cilrep.astCilRep) :> ('e,'f) Rep.representation)
     | "txt" | "string" ->
     Global.extension := ".txt";
-      process base real_ext 
+      process base real_ext
         ((new Stringrep.stringRep) :>('a,'b) Rep.representation)
     | "" | "exe" | "elf" ->
-      process base real_ext 
+      process base real_ext
         ((new Elfrep.elfRep) :>('a,'b) Rep.representation);
-    | other -> begin 
+    | other -> begin
       List.iter (fun (ext,myfun) ->
-        if ext = other then myfun () 
-      ) !Rep.global_filetypes ; 
-      abort "%s: unknown file type to repair" !program_to_repair 
+        if ext = other then myfun ()
+      ) !Rep.global_filetypes ;
+      abort "%s: unknown file type to repair" !program_to_repair
     end
 end ;;
 

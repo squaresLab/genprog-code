@@ -49,17 +49,17 @@ open Unix
    messages that do not conform to the expected format. *)
 let main ()= begin
   let options = [
-    "--num-comps", Arg.Set_int num_comps, 
+    "--num-comps", Arg.Set_int num_comps,
     "X Distributed: Number of computers to simulate" ;
     "--sport", Arg.Set_int server_port, "X server port" ;
   ] in
-  let aligned = Arg.align options in 
-  let usage_msg = "Program repair prototype -- Distributed GA server" in 
+  let aligned = Arg.align options in
+  let usage_msg = "Program repair prototype -- Distributed GA server" in
     Arg.parse aligned (usage_function aligned usage_msg) usage_msg;
-  let debug_str = Printf.sprintf "repair.debug.distserver" in 
-  debug_out := open_out debug_str ; 
+  let debug_str = Printf.sprintf "repair.debug.distserver" in
+  debug_out := open_out debug_str ;
 
-  assert(!num_comps >= 2); 
+  assert(!num_comps >= 2);
 
   let client_tbl = Hashtbl.create !num_comps in
   let info_tbl = Hashtbl.create !num_comps in
@@ -67,7 +67,7 @@ let main ()= begin
      default)*)
   let rec getcomps sock =
     for currcomp=0 to (!num_comps-1) do
-      debug "Awaiting connection from client %d of %d\n" 
+      debug "Awaiting connection from client %d of %d\n"
         currcomp (!num_comps-1) ;
       let (sock,address) = accept sock  in
       let addr = match address with
@@ -87,9 +87,9 @@ let main ()= begin
   let server_exit_fun () =
     let total_bytes = ref 0 in
     let repair_found = ref [] in
-      hiter 
+      hiter
         (fun comp ->
-          fun (found,bytes_read,total_evals, gens) -> 
+          fun (found,bytes_read,total_evals, gens) ->
             total_bytes := !total_bytes + bytes_read;
             debug "Computer %d:\n" comp;
             if found then begin
@@ -126,8 +126,8 @@ let main ()= begin
   bind server_socket  (ADDR_INET (inet_addr_any, !server_port));
   listen server_socket (!num_comps+5);
   getcomps server_socket;
-  debug "All clients have connected\n" ; 
-    
+  debug "All clients have connected\n" ;
+
   let socketlist = ref [] in
 
   (* Send all clients all clients' information (address and port) *)
@@ -142,50 +142,50 @@ let main ()= begin
   ) client_tbl;
 
   (* Processes all the stats and makes the server do as it should *)
-  let ready_clients = ref 0 in 
-  let exited_clients = ref 0 in 
+  let ready_clients = ref 0 in
+  let exited_clients = ref 0 in
 
   (* Let's spin until we find a client who's done *)
-  while true do 
-    debug "Waiting for client communication, %d/%d clients ready to exchange\n"        !ready_clients !num_comps ; 
+  while true do
+    debug "Waiting for client communication, %d/%d clients ready to exchange\n"        !ready_clients !num_comps ;
     let msglist = spin !socketlist [] in
 
-    let process_client_communication buffer = 
+    let process_client_communication buffer =
       debug "Client: %S\n" buffer ;
       let words = Str.split whitespace_regexp buffer in
       match words with
-      | from :: "Ready" :: rest -> incr ready_clients 
-      | from :: "Repair_Found" :: rest -> 
-        exit 0  
+      | from :: "Ready" :: rest -> incr ready_clients
+      | from :: "Repair_Found" :: rest ->
+        exit 0
       | from :: "No_Repair_Found" :: rest -> incr exited_clients
-      | _ -> failwith "unknown message in client-server protocol" 
-    in 
+      | _ -> failwith "unknown message in client-server protocol"
+    in
 
     liter process_client_communication msglist;
 
     if !exited_clients >= !num_comps then begin
-      debug "All clients have exited; terminating.\n" ; 
-      exit 0 
+      debug "All clients have exited; terminating.\n" ;
+      exit 0
     end else if !ready_clients >= !num_comps then begin
-      ready_clients := 0 ; 
-      debug "Instructing clients to exchange variants.\n" ; 
-      let counting = 0--(!num_comps - 1) in 
-      let permutation = random_order counting in 
+      ready_clients := 0 ;
+      debug "Instructing clients to exchange variants.\n" ;
+      let counting = 0--(!num_comps - 1) in
+      let permutation = random_order counting in
       let rec sender list last =
           match list with
           | [] -> ()
           | hd :: tl ->
             let (sock,_,_) = Hashtbl.find client_tbl last in
-            debug "\tinstructing %d to send to %d\n" last hd ; 
+            debug "\tinstructing %d to send to %d\n" last hd ;
               fullsend sock (Printf.sprintf "%d" hd);
               sender tl hd
       in
       debug "Exchange order: " ;
-      liter (fun x -> debug "%d -> " x) permutation ; 
-      debug "\n" ; 
+      liter (fun x -> debug "%d -> " x) permutation ;
+      debug "\n" ;
       let last = List.nth permutation (!num_comps-1) in
       sender permutation last
-    end 
+    end
   done
 end ;;
 

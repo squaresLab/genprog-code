@@ -38,7 +38,7 @@
  *)
 (**  Cil C AST.  This is the main implementation of the "Rep" interface for C programs.
 
-     Notably, this includes code and support for: 
+     Notably, this includes code and support for:
      {ul
      {- compiling C programs}
      {- running test cases on C programs}
@@ -48,7 +48,7 @@
      template-defined mutation operations}}
 
      Supports both the Patch and AST representations for C programs.  Patch is
-     now the default. 
+     now the default.
 *)
 
 open Printf
@@ -60,15 +60,15 @@ open Rep
 open Minimization
 
 (**/**)
-let semantic_check = ref "exact" 
+let semantic_check = ref "exact"
 let multithread_coverage = ref false
 let uniq_coverage = ref false
-let swap_bug = ref false 
-let ignore_standard_headers = ref false 
-let ignore_dead_code = ref false 
-let ignore_equiv_appends = ref false 
-let ignore_string_equiv_fixes = ref false 
-let ignore_untyped_returns = ref false 
+let swap_bug = ref false
+let ignore_standard_headers = ref false
+let ignore_dead_code = ref false
+let ignore_equiv_appends = ref false
+let ignore_string_equiv_fixes = ref false
+let ignore_untyped_returns = ref false
 
 let _ =
   options := !options @
@@ -76,51 +76,51 @@ let _ =
       "--semantic-check", Arg.Set_string semantic_check,
       " limit CIL mutations by requiring matching variables" ;
 
-      "--mt-cov", Arg.Set multithread_coverage, 
+      "--mt-cov", Arg.Set multithread_coverage,
       "  instrument for coverage with locks.  Avoid if possible.";
 
-      "--uniq", Arg.Set uniq_coverage, 
+      "--uniq", Arg.Set uniq_coverage,
       "  print each visited stmt only once";
 
-      "--swap-bug", Arg.Set swap_bug, 
+      "--swap-bug", Arg.Set swap_bug,
       " swap is implemented as in ICSE 2012 GMB experiments." ;
 
       "--ignore-dead-code", Arg.Set ignore_dead_code,
-      " do not make known-dead mutations." ; 
+      " do not make known-dead mutations." ;
 
-      "--ignore-standard-headers", Arg.Set ignore_standard_headers, 
+      "--ignore-standard-headers", Arg.Set ignore_standard_headers,
       " do not mutate C library #include headers." ;
 
-      "--ignore-equiv-appends", Arg.Set ignore_equiv_appends, 
-      " do not make equivalent append mutations." ; 
+      "--ignore-equiv-appends", Arg.Set ignore_equiv_appends,
+      " do not make equivalent append mutations." ;
 
-      "--ignore-string-equiv-fixes", Arg.Set ignore_string_equiv_fixes, 
-      " do not consider string-equivalent fixes twice." ; 
+      "--ignore-string-equiv-fixes", Arg.Set ignore_string_equiv_fixes,
+      " do not consider string-equivalent fixes twice." ;
 
-      "--ignore-untyped-returns", Arg.Set ignore_untyped_returns, 
-      " do not insert 'return' if the types mismatch." ; 
-    ] 
+      "--ignore-untyped-returns", Arg.Set ignore_untyped_returns,
+      " do not insert 'return' if the types mismatch." ;
+    ]
 (**/**)
 
 (** {8 High-level CIL representation types/utilities } *)
 
-let cilRep_version = "17" 
+let cilRep_version = "17"
 
 (** use CIL to parse a C file. This is called out as a utility function
     because CIL parser has global state hidden in the Errormsg module.
     If this state is not reset, every parse after one that has a parse
     error will mistakenly die. *)
-let cil_parse file_name = 
-  Errormsg.hadErrors := false ; (* critical! *) 
-  Frontc.parse file_name () 
+let cil_parse file_name =
+  Errormsg.hadErrors := false ; (* critical! *)
+  Frontc.parse file_name ()
 
 type cilRep_atom =
   | Stmt of Cil.stmtkind
-  | Exp of Cil.exp 
+  | Exp of Cil.exp
 
 (** The AST info for the original input Cil file is stored in a global variable
     of type [ast_info].  *)
-type ast_info = 
+type ast_info =
     { code_bank : Cil.file StringMap.t ;
       (** program code: maps filenames to ASTs *)
       oracle_code : Cil.file StringMap.t ;
@@ -165,7 +165,7 @@ type stmt_info =
     syntax_allowed : SyntaxScopeSet.t ;
 
     (* liveness analysis: None indicates analysis no performed on this stmt *)
-    (* Liveness information is used for --ignore-dead-code *) 
+    (* Liveness information is used for --ignore-dead-code *)
     live_before : IntSet.t option ; (** set of variables live before stmt *)
     live_after  : IntSet.t option ; (** set of variables live after stmt *)
 
@@ -200,7 +200,7 @@ let empty_info () =
     }
 (**/**)
 
-let global_ast_info = ref (empty_info()) 
+let global_ast_info = ref (empty_info())
 
 (** stores loaded templates *)
 let registered_c_templates = hcreate 10
@@ -208,13 +208,13 @@ let registered_c_templates = hcreate 10
 class collectTypelabels result = object
   inherit nopCilVisitor
 
-  method vstmt stmt = 
+  method vstmt stmt =
     let str,stmt = Cdiff.stmt_to_typelabel stmt in
       result := (IntSet.add str !result);
       SkipChildren
 end
 
-let standard_headers = ref None 
+let standard_headers = ref None
 
 (*
 $ `gcc -print-prog-name=cc1` -v < /dev/null
@@ -228,29 +228,29 @@ ignoring nonexistent directory
 /usr/include
 End of search list.
 Analyzing compilation unit
-*) 
+*)
 
 (* --ignore-standard-headers requires us to be able to determine what
  * the standard include paths are. Currently we only support this for GCC.
  * If /usr/include is a standard include path, then /usr/include/FOO is
- * a standard header for all postfixes FOO. 
+ * a standard header for all postfixes FOO.
  *)
-let get_standard_headers () = 
-  match !standard_headers with 
+let get_standard_headers () =
+  match !standard_headers with
   | Some(x) -> x
-  | None when not !ignore_standard_headers -> []  
+  | None when not !ignore_standard_headers -> []
   | None -> begin
-    let tfile = Filename.temp_file "genprog" "headers" in 
-    let command = Printf.sprintf 
-      (* this -print-prog-name arcana is GCC specific *) 
-      "`%s -print-prog-name=cc1` -v < /dev/null 2>%s" 
-      !compiler_name tfile in 
+    let tfile = Filename.temp_file "genprog" "headers" in
+    let command = Printf.sprintf
+      (* this -print-prog-name arcana is GCC specific *)
+      "`%s -print-prog-name=cc1` -v < /dev/null 2>%s"
+      !compiler_name tfile in
     let result = match system command with
-      | Unix.WEXITED(0) -> 
-        let path_file_str = try file_to_string tfile with e -> 
-          debug "cilrep: %s read failed: %s\n" command 
-          (Printexc.to_string e) ; "" 
-        in 
+      | Unix.WEXITED(0) ->
+        let path_file_str = try file_to_string tfile with e ->
+          debug "cilrep: %s read failed: %s\n" command
+          (Printexc.to_string e) ; ""
+        in
         let regexp = Str.regexp "[:= \n\t]" in
         let parts = Str.split regexp path_file_str in
         let parts = List.filter (fun x ->
@@ -258,42 +258,42 @@ let get_standard_headers () =
         ) parts in
         List.iter (fun p ->
           debug "cilRep: coverage ignores: %s\n" p
-        ) parts ; 
+        ) parts ;
         standard_headers := Some(parts) ;
-        parts 
+        parts
 
-      | _ -> 
+      | _ ->
         debug "cilRep: %s failed\n" command ;
         standard_headers := Some([]) ;
-        [] 
-    in 
-    result 
-  end 
+        []
+    in
+    result
+  end
 
 (* If --ignore-standard-headers is true, locations inside standard header
  * files like /usr/include/stdio.h are not valid for fault localization.
  * (If you think about it, there's no program-specific patch for a
- * system-wide header file.) 
+ * system-wide header file.)
  *
- * Otherwise, all locations are valid. *) 
-let can_repair_location loc = 
+ * Otherwise, all locations are valid. *)
+let can_repair_location loc =
   if !ignore_standard_headers then begin
-    let sh_list = get_standard_headers () in 
-    let prefix_match directory file = 
+    let sh_list = get_standard_headers () in
+    let prefix_match directory file =
       let minsize = min (String.length directory) (String.length file) in
-      let suba = String.sub directory 0 minsize in 
+      let suba = String.sub directory 0 minsize in
       let subb = String.sub file 0 minsize in
       let result = suba = subb in
       (*
       if result then begin
         debug "cilRep: %s locations ignored\n" file
       end ;
-      *) 
-      result 
-    in 
-    not (List.exists (fun sh_directory -> prefix_match sh_directory loc.file 
-    ) sh_list) 
-  end else true 
+      *)
+      result
+    in
+    not (List.exists (fun sh_directory -> prefix_match sh_directory loc.file
+    ) sh_list)
+  end else true
 
 let semantic_equiv_vars varmap available =
   match !semantic_check with
@@ -325,10 +325,10 @@ let in_scope_at varmap context_info moved_info =
 (** {8 Initial source code processing} *)
 
 (**/**)
-let canonical_stmt_ht = Hashtbl.create 255 
+let canonical_stmt_ht = Hashtbl.create 255
 (* as of Tue Jul 26 11:01:16 EDT 2011, WW verifies that canonical_stmt_ht
- * is _not_ the source of a "memory leak" *) 
-let canonical_uniques = ref 0 
+ * is _not_ the source of a "memory leak" *)
+let canonical_uniques = ref 0
 (**/**)
 
 (** If two statements both print as "x = x + 1", map them to the same statement
@@ -337,66 +337,66 @@ let canonical_uniques = ref 0
 
     @param str string representation of a statement
     @param sid statement id of the statement
-    @return int a canonical ID for that statement. 
+    @return int a canonical ID for that statement.
 *)
 let canonical_sid str sid =
   try
     Hashtbl.find canonical_stmt_ht str
   with _ -> begin
     Hashtbl.add canonical_stmt_ht str sid ;
-    incr canonical_uniques ; 
-    sid 
-  end 
+    incr canonical_uniques ;
+    sid
+  end
 
 (** Checks whether a statement is considered mutate-able.  Different handling is
-    required for expression-level mutation. 
+    required for expression-level mutation.
 
     @param Cil.stmtkind type of a statement
-    @return bool corresponding to whether it's a mutatable statement. 
+    @return bool corresponding to whether it's a mutatable statement.
 *)
-let can_repair_statement sk = 
+let can_repair_statement sk =
     match sk with
     | Instr _ | Return _ | If _ | Loop _ -> true
 
-    | Goto _ | Break _ | Continue _ | Switch _ 
+    | Goto _ | Break _ | Continue _ | Switch _
     | Block _ | TryFinally _ | TryExcept _ -> false
     | _ -> false
 
-(** This helper visitor resets all stmt ids to zero. *) 
+(** This helper visitor resets all stmt ids to zero. *)
 class numToZeroVisitor = object
   inherit nopCilVisitor
   method vstmt s = s.sid <- 0 ; DoChildren
-end 
+end
 
 (** This visitor changes empty statement lists (e.g., the else branch in if
     (foo) \{ bar(); \} ) into dummy statements that we can modify later. *)
 class emptyVisitor = object
   inherit nopCilVisitor
-  method vblock b = 
+  method vblock b =
     ChangeDoChildrenPost(b,(fun b ->
-      if b.bstmts = [] then 
-        mkBlock [ mkEmptyStmt () ] 
-      else b 
+      if b.bstmts = [] then
+        mkBlock [ mkEmptyStmt () ]
+      else b
     ))
-end 
+end
 
 (** This visitor makes every instruction into its own statement. *)
 class everyVisitor = object
   inherit nopCilVisitor
-  method vblock b = 
+  method vblock b =
     ChangeDoChildrenPost(b,(fun b ->
       let stmts = List.map (fun stmt ->
         match stmt.skind with
-        | Instr([]) -> [stmt] 
-        | Instr(first :: rest) -> 
+        | Instr([]) -> [stmt]
+        | Instr(first :: rest) ->
           stmt.skind <- Instr([first]);
-          stmt :: List.map (fun instr -> mkStmtOneInstr instr ) rest 
-        | other -> [ stmt ] 
+          stmt :: List.map (fun instr -> mkStmtOneInstr instr ) rest
+        | other -> [ stmt ]
       ) b.bstmts in
       let stmts = List.flatten stmts in
-        { b with bstmts = stmts } 
+        { b with bstmts = stmts }
     ))
-end 
+end
 
 (**/**)
 let my_zero = new numToZeroVisitor
@@ -410,22 +410,22 @@ let my_zero = new numToZeroVisitor
 *)
 class varrefVisitor setref = object
   inherit nopCilVisitor
-  method vvrbl va = 
+  method vvrbl va =
     setref := IntSet.add va.vid !setref ;
-    SkipChildren 
-end 
+    SkipChildren
+end
 
 class cannotRepairVisitor atomsetref = object
-  inherit nopCilVisitor 
-  method vstmt s = 
+  inherit nopCilVisitor
+  method vstmt s =
     (if s.sid <> 0 then atomsetref := IntSet.add s.sid !atomsetref) ;
     DoChildren
-  method vfunc fd = (* function definition *) 
-    if can_repair_location fd.svar.vdecl then 
+  method vfunc fd = (* function definition *)
+    if can_repair_location fd.svar.vdecl then
       SkipChildren
     else
       DoChildren
-end 
+end
 let my_cannotrepair = new cannotRepairVisitor
 
 (** This visitor extracts all variable declarations from a piece of AST.
@@ -436,14 +436,14 @@ class varinfoVisitor varsetref funsetref = object
   method vfunc fd =
     funsetref := IntMap.add fd.svar.vid fd !funsetref ;
     DoChildren
-  method vvdec va = 
+  method vvdec va =
     varsetref := IntMap.add va.vid va !varsetref ;
-    DoChildren 
-end 
+    DoChildren
+end
 
 (** This visitor walks over the C program AST, checking the statement numbers
     it encounters. Statements are numbered in depth-first pre-order by default.
-    
+
     Whenever it encounters a statement that does not have the expected
     statement ID (either no ID has been assigned to the statement yet or the
     statement was inserted later), it calls [unexpected] with the offending
@@ -459,7 +459,7 @@ class numVisitor max_id next_id unexpected =
 object
   inherit nopCilVisitor
 
-  val mutable current_function = "???" 
+  val mutable current_function = "???"
 
   method vfunc fd =
     let prev_function = current_function in
@@ -643,22 +643,22 @@ end
 (**/**)
 let unexpected_num s expected funname =
   if can_repair_statement s.skind then begin
-    s.sid <- expected ; 
+    s.sid <- expected ;
     (*
     * Canonicalize this statement. We may have five statements
-    * that print as "x++;" but that doesn't mean we want to count 
+    * that print as "x++;" but that doesn't mean we want to count
     * that five separate times. The copy is because we go through and
-    * update the statements to add coverage information later *) 
+    * update the statements to add coverage information later *)
     let rhs = (visitCilStmt my_zero (copy s)).skind in
-    let stripped_stmt = { 
+    let stripped_stmt = {
       labels = [] ; skind = rhs ; sid = 0; succs = [] ; preds = [] ;
-    } in 
+    } in
     let pretty_printed =
-      try 
+      try
         Pretty.sprint ~width:80
           (Pretty.dprintf "%a" dn_stmt stripped_stmt)
-      with _ -> Printf.sprintf "@%d" s.sid 
-    in 
+      with _ -> Printf.sprintf "@%d" s.sid
+    in
       ignore (canonical_sid pretty_printed s.sid)
   end else
     s.sid <- -expected
@@ -683,9 +683,9 @@ let my_num max_id = new numVisitor max_id (ref (!max_id + 1)) unexpected_num
 
 (* These are CIL variables describing C standard library functions like
  * 'fprintf'. We use them when we are instrumenting the file to
- * print out statement coverage information for fault localization. *)  
+ * print out statement coverage information for fault localization. *)
 (**/**)
-let void_t = Formatcil.cType "void *" [] 
+let void_t = Formatcil.cType "void *" []
 
 (* For most functions, we would like to use the prototypes as defined in the
    standard library used for this compiler. We do this by preprocessing a simple
@@ -693,12 +693,12 @@ let void_t = Formatcil.cType "void *" []
    happen when actually computing fault localization, the prototypes are lazily
    cached in the va_table. fill_va_table is called by the coverage visitor to
    fill the cache (if necessary) and retrieve the cstmt function along with the
-   list of function declarations. *) 
+   list of function declarations. *)
 
 let va_table = Hashtbl.create 10
 
-let fill_va_table = ref 
-  ((fun () -> failwith "fill_va_table uninitialized") : unit -> 
+let fill_va_table = ref
+  ((fun () -> failwith "fill_va_table uninitialized") : unit ->
   (string -> (Global.StringMap.key * Cil.formatArg) list -> Cil.stmt) *
            Cil.global list Global.StringMap.t)
 
@@ -709,8 +709,8 @@ let uniq_array_va = ref
 let uniq_int_va = ref
   (makeGlobalVar "___coverage_array_already_memset" (Cil.intType))
 
-let do_not_instrument_these_functions = 
-  [ "fflush" ; "memset" ; "fprintf" ; "fopen" ; "fclose" ; "vgPlain_fmsg" ; "vgPlain_memset" ] 
+let do_not_instrument_these_functions =
+  [ "fflush" ; "memset" ; "fprintf" ; "fopen" ; "fclose" ; "vgPlain_fmsg" ; "vgPlain_memset" ]
 
 (**/**)
 
@@ -719,16 +719,16 @@ let do_not_instrument_these_functions =
     'printf' that writes that statement's number to the .path file at run-time.
     Determines prototypes for instrumentation functions (e.g. fprintf) that are
     not present in the original code.
-    
+
     @param variant rep the cilrep object being visited; used to preprocess headers
     @param prototypes mapref StringMap to fill with missing prototypes
     @param coverage_outname path filename
     @param found_fmsg valgrind-specific boolean reference
-*) 
+*)
 (* FIXME: multithreaded and uniq coverage are not going to play nicely here in
    terms of memset *)
 
-class covVisitor variant prototypes coverage_outname found_fmsg = 
+class covVisitor variant prototypes coverage_outname found_fmsg =
 object
   inherit nopCilVisitor
 
@@ -764,79 +764,79 @@ object
         end
       | _ -> ChangeDoChildrenPost([g], fun gs -> gs)
 
-  method vblock b = 
+  method vblock b =
     ChangeDoChildrenPost(b,(fun b ->
-      let result = List.map (fun stmt -> 
+      let result = List.map (fun stmt ->
         if stmt.sid > 0 then begin
-          let str = 
-            if !is_valgrind then 
-              Printf.sprintf "FMSG: (%d)\n" stmt.sid 
+          let str =
+            if !is_valgrind then
+              Printf.sprintf "FMSG: (%d)\n" stmt.sid
             else
               Printf.sprintf "%d\n" stmt.sid
           in
-          let print_str = 
-            if !is_valgrind then 
+          let print_str =
+            if !is_valgrind then
               "vgPlain_fmsg(%g:str);"
-            else 
+            else
             "fprintf(fout, %g:str);\n"^
               "fflush(fout);\n"
           in
-          let print_str = 
-            if !uniq_coverage then 
+          let print_str =
+            if !uniq_coverage then
               "if ( uniq_array[%d:index] == 0 ) {\n" ^
                 print_str^
                 "uniq_array[%d:index] = 1; }\n"
             else
               print_str
           in
-          let print_str = 
-            if !multithread_coverage then 
+          let print_str =
+            if !multithread_coverage then
               "fout = fopen(%g:fout_g, %g:a_arg);\n"^print_str^"fclose(fout);\n"
-            else 
-              print_str 
+            else
+              print_str
           in
-          let newstmt = cstmt print_str 
+          let newstmt = cstmt print_str
             [("uniq_array", Fv(!uniq_array_va));("fout_g",Fg coverage_outname);
              ("index", Fd (stmt.sid)); ("str",Fg(str))]
           in
-            [ newstmt ; stmt ] 
+            [ newstmt ; stmt ]
         end else [stmt]
-      ) b.bstmts in 
-      let block = 
-        { b with bstmts = List.flatten result } 
+      ) b.bstmts in
+      let block =
+        { b with bstmts = List.flatten result }
       in
         block
     ) )
 
-  method vvdec vinfo = 
+  method vvdec vinfo =
     if vinfo.vname = "vgPlain_fmsg" then
       found_fmsg := true;
     DoChildren
 
-  method vfunc f = 
-    if !found_fmsg then begin 
-      if List.mem f.svar.vname do_not_instrument_these_functions then begin 
-        debug "cilRep: WARNING: definition of fprintf found at %s:%d\n" 
+  method vfunc f =
+    if !found_fmsg then begin
+      if List.mem f.svar.vname do_not_instrument_these_functions then begin
+        debug "cilRep: WARNING: definition of fprintf found at %s:%d\n"
           f.svar.vdecl.file f.svar.vdecl.line ;
         debug "\tcannot instrument for coverage (would be recursive)\n";
         SkipChildren
       end else if not !multithread_coverage then begin
-        let uniq_instrs = 
+        let uniq_instrs =
           if !uniq_coverage then
-            let memset_str = 
+            let memset_str =
               if !is_valgrind then "vgPlain_memset(uniq_array, 0, sizeof(uniq_array))"
                  else "memset(uniq_array, 0, sizeof(uniq_array))"
             in
             Printf.sprintf "if(uniq_int == 0) {\n uniq_int = 1;\n %s;\n}\n" memset_str
-          else "" 
+          else ""
         in
-        let stmt_str = 
+        let stmt_str =
           if !is_valgrind then
             uniq_instrs
-          else 
+          else
             "if (fout == 0) {\n fout = fopen(%g:fout_g,%g:wb_arg);\n"^uniq_instrs^"}"
         in
-        let ifstmt = cstmt stmt_str 
+        let ifstmt = cstmt stmt_str
           [("uniq_array", Fv(!uniq_array_va));("fout_g",Fg coverage_outname); ("uniq_int", Fv(!uniq_int_va))]
         in
           ChangeDoChildrenPost(f,
@@ -845,7 +845,7 @@ object
                                  f))
       end else DoChildren
     end else SkipChildren
-end 
+end
 
 (** {8 Utilities to inspect, modify, or otherwise manipulate CIL ASTs} With the
     exception of the get visitors for expressions and the replacement
@@ -855,27 +855,27 @@ end
 
 (**/**)
 (* For debugging, it is sometimes handy to add an in-source label
- * indicating what we have changed. *) 
+ * indicating what we have changed. *)
 
-let label_counter = ref 0 
+let label_counter = ref 0
 let possibly_label s str id =
   if !label_repair then
     let text = sprintf "__repair_%s_%d__%x" str id !label_counter in
       incr label_counter ;
       let new_label = Label(text,!currentLoc,false) in
-        new_label :: s.labels 
-  else s.labels 
+        new_label :: s.labels
+  else s.labels
 
 exception Found_Stmt of Cil.stmt
 (**/**)
 
 (** This visitor walks over the C program and finds the [stmt] associated
-    with the given statement id (living in the given function). 
+    with the given statement id (living in the given function).
 
     @param function_name string, function name to look in
     @param desired_sid int, id of the statement we're looking for
     @raise Found_Stmt with the statement if it is located.
-*) 
+*)
 class findStmtVisitor ?function_name desired_sid = object
   inherit nopCilVisitor
   method vfunc fd =
@@ -883,49 +883,49 @@ class findStmtVisitor ?function_name desired_sid = object
     | Some(name) when fd.svar.vname <> name -> SkipChildren
     | _ -> DoChildren
 
-  method vstmt s = 
+  method vstmt s =
     if s.sid = desired_sid then begin
       raise (Found_Stmt s)
     end ; DoChildren
-end 
+end
 
 (** This visitor walks over the C program and to find the atom at the given line
-    of the given file. 
+    of the given file.
 
     @param source_file string, file to look in
     @param source_line, int line number to look at
-*) 
+*)
 exception FoundAtom of string * int
 
 class findLineVisitor (source_atom : int) = object
   inherit nopCilVisitor
-  method vstmt s = 
-    if s.sid == source_atom then 
+  method vstmt s =
+    if s.sid == source_atom then
       raise (FoundAtom(!currentLoc.file,!currentLoc.line))
     else DoChildren
-end 
+end
 
 (** This visitor finds the expressions associated with the given statement ID.
     Sets the reference output to the expressions.
-    
-    @param output list reference for the output 
+
+    @param output list reference for the output
 *)
 class getExpVisitor output = object
   inherit nopCilVisitor
   val mutable first = true
-  method vstmt s = 
+  method vstmt s =
     if first then begin
       first <- false ;
       ChangeDoChildrenPost(s, fun s -> output := lrev !output; s)
-    end else 
-      SkipChildren (* stay within this statement *) 
-  method vexpr e = 
+    end else
+      SkipChildren (* stay within this statement *)
+  method vexpr e =
     output := e :: !output ;
     DoChildren
 end
 
-(** This visitor puts an expression into the given Cil statement. 
-      
+(** This visitor puts an expression into the given Cil statement.
+
     @param count integer, which expression in the expressions associated with
     the statement should be replaced.
     @param desired optional expression to put at that location
@@ -934,19 +934,19 @@ end
 *)
 class putExpVisitor count desired first = object
   inherit nopCilVisitor
-  method vstmt s = 
+  method vstmt s =
     if !first then begin
       first := false ;
       DoChildren
-    end else 
-      SkipChildren (* stay within this statement *) 
-  method vexpr e = 
+    end else
+      SkipChildren (* stay within this statement *)
+  method vexpr e =
     ChangeDoChildrenPost(e, fun e ->
       incr count ;
       match desired with
       | Some(idx,e) when idx = !count -> e
-      | _ -> e 
-    ) 
+      | _ -> e
+    )
 end
 
 let get_subtree_labels s =
@@ -1043,7 +1043,7 @@ object
       new_s
 end
 
-(** Append a single statement (atom) after a given statement (atom) 
+(** Append a single statement (atom) after a given statement (atom)
 
     @param append_after id where the append is happening
     @param what_to_append Cil.stmtkind to be appended
@@ -1065,13 +1065,13 @@ object
           both.labels <- possibly_label both "app" append_after ;
           both
       )
-end 
+end
 
-(** Replace one statement with another (atoms) 
+(** Replace one statement with another (atoms)
 
     @param replace atom_id of statement to be replaced
     @param replace_with Cil.stmtkind with which it should be replaced.
-*)  
+*)
 class replaceVisitor
   ?(update=None)
   (possible_label : string)
@@ -1090,21 +1090,21 @@ object (self)
     end
 end
 
-class templateReplace 
-  replacements_lval 
-  replacements_exp 
-  replacements_stmt = 
+class templateReplace
+  replacements_lval
+  replacements_exp
+  replacements_stmt =
 object inherit nopCilVisitor
 
-  method vstmt stmt = 
+  method vstmt stmt =
     match stmt.skind with
       Instr([Set(lval,e,_)]) ->
-        (match e with 
+        (match e with
           Lval(Var(vinfo),_) ->
-            if vinfo.vname = "___placeholder_hole___" || 
+            if vinfo.vname = "___placeholder_hole___" ||
             vinfo.vname = "___placeholder_position___" then begin
             (match lval with
-              Var(vinfo),_ -> 
+              Var(vinfo),_ ->
                   ChangeTo(hfind replacements_stmt vinfo.vname)
             | _ -> DoChildren)
             end else DoChildren
@@ -1120,7 +1120,7 @@ object inherit nopCilVisitor
         else DoChildren
     | _ -> DoChildren
 
-  method vlval lval = 
+  method vlval lval =
     match lval with
       (Var(vinfo),o) ->
         if hmem replacements_lval vinfo.vname then begin
@@ -1136,18 +1136,18 @@ end
     @param sid1 atom_id of statement to be replaced
     @param skind to be put at location [sid1]
  *)
-class putVisitor 
-  (sid1 : atom_id) 
-  (skind1 : Cil.stmtkind) 
+class putVisitor
+  (sid1 : atom_id)
+  (skind1 : Cil.stmtkind)
   = object
     inherit nopCilVisitor
     method vstmt s = ChangeDoChildrenPost(s, fun s ->
-      if s.sid = sid1 then begin 
+      if s.sid = sid1 then begin
         { s with skind = skind1 ;
           labels = possibly_label s "put" sid1 ;
-        } 
-      end else s 
-    ) 
+        }
+      end else s
+    )
   end
 
 (** This visitor fixes up the statement ids after a put operation so as to
@@ -1239,43 +1239,43 @@ end
 
 class sidToLabelVisitor = object
   inherit nopCilVisitor
-  method vstmt s = 
-    let new_label = Label(Printf.sprintf " %d" s.sid,locUnknown,false) in 
-    s.labels <- new_label :: s.labels ; 
+  method vstmt s =
+    let new_label = Label(Printf.sprintf " %d" s.sid,locUnknown,false) in
+    s.labels <- new_label :: s.labels ;
     DoChildren
-end 
+end
 
 (** This visitor computes per-statement livenes information. It computes
 the variables that are live BEFORE the statement (lb), those that are live
 AFTER the statement (la), and those functions for which there is a failure
 to compute liveness (lf). We need BEFORE and AFTER separately to handle
-insert vs. append correctly. 
+insert vs. append correctly.
 
-Under the hood, this just uses Cil's liveness-computing library. *) 
+Under the hood, this just uses Cil's liveness-computing library. *)
 class livenessVisitor read_info write_info = object
   inherit nopCilVisitor
 
   val mutable failed = false
 
-  method vfunc f = 
+  method vfunc f =
     Cfg.clearCFGinfo f;
     ignore(Cfg.cfgFun f);
-    (try 
-      Errormsg.hadErrors := false ; 
-      Liveness.computeLiveness f ; 
+    (try
+      Errormsg.hadErrors := false ;
+      Liveness.computeLiveness f ;
       failed <- false ;
       DoChildren
-     with e -> 
+     with e ->
         debug "cilRep: liveness failure for %s: %s\n"
-          f.svar.vname (Printexc.to_string e) ; 
+          f.svar.vname (Printexc.to_string e) ;
         failed <- true ;
         DoChildren
-    ) 
+    )
 
-  method vstmt s = 
+  method vstmt s =
     match s.labels with
     | (Label(first,_,_)) :: rest when first <> "" && first.[0] = ' ' ->
-      let genprog_sid = my_int_of_string first in 
+      let genprog_sid = my_int_of_string first in
       let before, after =
         if failed then None, None
         else
@@ -1294,23 +1294,23 @@ class livenessVisitor read_info write_info = object
         } ;
         DoChildren
     | _ -> DoChildren
-end 
+end
 
 class debugVisitor = object
   inherit nopCilVisitor
-  method vstmt s = 
+  method vstmt s =
     if s.sid <> 0 then
       debug "stmt: %d\n" s.sid;
     DoChildren
 end
 
 (**/**)
-let my_put_exp = new putExpVisitor 
-let my_get_exp = new getExpVisitor 
+let my_put_exp = new putExpVisitor
+let my_get_exp = new getExpVisitor
 let my_findstmt = new findStmtVisitor
 let my_find_line = new findLineVisitor
 let my_del to_del = new replaceVisitor "del" to_del (mkStmt (Block(mkBlock [])))
-let my_app = new appVisitor 
+let my_app = new appVisitor
 let my_rep = new replaceVisitor "rep"
 let my_put = new putVisitor
 let my_liveness = new livenessVisitor
@@ -1325,18 +1325,18 @@ let debug_code_bank () =
       visitCilFileSameGlobals my_debug file)
       files
 
-let isIntegralType t = 
+let isIntegralType t =
   match unrollType t with
     (TInt _ | TEnum _) -> true
   | _ -> false
 
-let isArithmeticType t = 
+let isArithmeticType t =
   match unrollType t with
     (TInt _ | TEnum _ | TFloat _) -> true
   | _ -> false
-    
 
-let isPointerType t = 
+
+let isPointerType t =
   match unrollType t with
     TPtr _ -> true
   | _ -> false
@@ -1344,7 +1344,7 @@ let isPointerType t =
 let isScalarType t =
   isArithmeticType t || isPointerType t
 
-let isFunctionType t = 
+let isFunctionType t =
   match unrollType t with
     TFun _ -> true
   | _ -> false
@@ -1504,7 +1504,7 @@ let rec toposort_one instantiations visited gs ((d,b,n) as tag) =
        the full definition of the renamed type. (Actually a typedef
        "declaration" may not even require a declaration of the named type at
        all, but this approach is usually good enough.) *)
- 
+
     let b =
       match d with
       | `DType ->
@@ -1603,7 +1603,7 @@ let toposort_globals ?roots:((roots: global list) = []) (globals: global list) =
 
 class virtual ['gene] cilRep  = object (self : 'self_type)
   (** Cil-based individuals are minimizable *)
-  inherit minimizableObject 
+  inherit minimizableObject
         (** the underlying code is [cilRep_atom] for all C-based individuals *)
   inherit ['gene, cilRep_atom] faultlocRepresentation as super
   method output name = self#output_source name
@@ -1612,7 +1612,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (* JD: This value must be mutable to allow self#copy() to work. I don't know
      that it also needs to be a ref cell, so I just left it as-is. *)
-  val mutable stmt_count = ref 0 
+  val mutable stmt_count = ref 0
 
   (** Caches data computed about each statement for various analyses. This can
       safely be shared between all copies. However, it must be mutable (or a ref
@@ -1626,7 +1626,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   val mutable fix_funmap : fundec IntMap.t ref = ref IntMap.empty
 
   method copy () : 'self_type =
-    let super_copy : 'self_type = super#copy () in 
+    let super_copy : 'self_type = super#copy () in
       (* Don't create a copy of stmt_count, stmt_data, or varmap. They should
          be shared between all instances.
       stmt_count <- ref !stmt_count;
@@ -1653,14 +1653,14 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     debug "cilRep: private size: %g MB\n"
       (self_size -. shared_size);
 
-  (* serialize the state *) 
+  (* serialize the state *)
   method serialize ?out_channel ?global_info (filename : string) =
-    let fout = 
+    let fout =
       match out_channel with
       | Some(v) -> v
-      | None -> open_out_bin filename 
-    in 
-      Marshal.to_channel fout (cilRep_version) [] ; 
+      | None -> open_out_bin filename
+    in
+      Marshal.to_channel fout (cilRep_version) [] ;
       let gval = match global_info with Some(true) -> true | _ -> false in
         if gval then begin
           Marshal.to_channel fout (!stmt_count) [] ;
@@ -1672,24 +1672,24 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           Marshal.to_channel fout (!global_ast_info.fault_localization) [] ;
         end;
         Marshal.to_channel fout (self#get_genome()) [] ;
-        debug "cilRep: %s: saved\n" filename ; 
+        debug "cilRep: %s: saved\n" filename ;
         super#serialize ~out_channel:fout ?global_info:global_info filename ;
         debug "cilrep done serialize\n";
-        if out_channel = None then close_out fout 
+        if out_channel = None then close_out fout
 (**/**)
 
   (** @raise Fail("version mismatch") if the version specified in the binary file is
       different from the current [cilRep_version] *)
   method deserialize ?in_channel ?global_info (filename : string) = begin
-    let fin = 
+    let fin =
       match in_channel with
       | Some(v) -> v
-      | None -> open_in_bin filename 
-    in 
+      | None -> open_in_bin filename
+    in
     let version = Marshal.from_channel fin in
       if version <> cilRep_version then begin
         debug "cilRep: %s has old version\n" filename ;
-        failwith "version mismatch" 
+        failwith "version mismatch"
       end ;
       let gval = match global_info with Some(n) -> n | _ -> false in
         if gval then begin
@@ -1707,10 +1707,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                 }
         end;
         self#set_genome (Marshal.from_channel fin);
-        super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
-        debug "cilRep: %s: loaded\n" filename ; 
+        super#deserialize ~in_channel:fin ?global_info:global_info filename ;
+        debug "cilRep: %s: loaded\n" filename ;
         if in_channel = None then close_in fin ;
-  end 
+  end
 
   (**/**)
 
@@ -1726,93 +1726,93 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method private get_fault_space_info sid =
     hfind stmt_data sid
 
-  (* Use an approximation to the program equivalence relation to 
+  (* Use an approximation to the program equivalence relation to
    * remove duplicate edits (i.e., those that would yield semantically
    * equivalent programs) from consideration. Command line arguments
-   * control the exact approximation(s) used. *) 
-  method reduce_fix_space () = 
+   * control the exact approximation(s) used. *)
+  method reduce_fix_space () =
     super#reduce_fix_space () ;
 
     if !ignore_standard_headers then begin
       (* if a location is in the standard headers, remove it from the
          fault space (we can't write a patch to it) and from the
          fix space (it wasn't written by the same devs, so we have no/less
-         reason to believe it will be a fix) 
-       *) 
-      let cannot_repair = ref IntSet.empty in 
+         reason to believe it will be a fix)
+       *)
+      let cannot_repair = ref IntSet.empty in
       StringMap.iter (fun _ file ->
         visitCilFileSameGlobals (my_cannotrepair cannot_repair) file ;
-      ) (self#get_source_files ()) ; 
-      let cannot_repair = !cannot_repair in 
-      debug "cilRep: atoms in standard headers: %d\n" 
-        (IntSet.cardinal cannot_repair) ; 
+      ) (self#get_source_files ()) ;
+      let cannot_repair = !cannot_repair in
+      debug "cilRep: atoms in standard headers: %d\n"
+        (IntSet.cardinal cannot_repair) ;
 
-      fault_localization := 
+      fault_localization :=
         List.filter (fun (atom,w) ->
           not (IntSet.mem atom cannot_repair)
-        ) !fault_localization ; 
-      fix_localization := 
+        ) !fault_localization ;
+      fix_localization :=
         List.filter (fun (atom,w) ->
           not (IntSet.mem atom cannot_repair)
-        ) !fix_localization ; 
-    end ; 
+        ) !fix_localization ;
+    end ;
 
-    let original_fixes = List.length !fix_localization in 
-    let fixes_seen = Hashtbl.create 255 in 
+    let original_fixes = List.length !fix_localization in
+    let fixes_seen = Hashtbl.create 255 in
 
     (* As a hideous hack, some of the CIL libraries that we use
      * renumber all of the statement IDs. Since we're using the statement
      * IDs to track our atom_ids, that would be very bad. When using such
      * ill-behaved CIL libraries we make a copy of the AST and store our
      * atom_id as a special __label:, allowing us to extract the
-     * generated information later and map it back to our atom_ids. *) 
-    let atom_id_to_str atom_id = 
-      let where, s = self#get_stmt atom_id in 
-      let stripped_stmt = { 
+     * generated information later and map it back to our atom_ids. *)
+    let atom_id_to_str atom_id =
+      let where, s = self#get_stmt atom_id in
+      let stripped_stmt = {
         labels = [] ; skind = s.skind ; sid = 0; succs = [] ; preds = [] ;
-      } in 
+      } in
       let pretty_printed =
-        try 
+        try
           Pretty.sprint ~width:80
             (Pretty.dprintf "%a" dn_stmt stripped_stmt)
         with _ -> Printf.sprintf "@%d" atom_id
-      in 
+      in
       pretty_printed
-    in 
+    in
 
     (* A very simple approximation. "x=0" might occur in two places in the
      * program (fix space), at which point we'd consider appending "x=0"
      * twice to every statement. Since syntactic equality implies semantic
-     * equality, if multiple strings are exactly equal, just use one. *) 
-    if !ignore_string_equiv_fixes then begin 
+     * equality, if multiple strings are exactly equal, just use one. *)
+    if !ignore_string_equiv_fixes then begin
 
       liter (fun (atom_id, weight) ->
-        let pretty_printed = atom_id_to_str atom_id in 
-        let sofar = try Hashtbl.find fixes_seen pretty_printed with _ -> 0. in 
-        let new_weight = max sofar weight in 
-        Hashtbl.replace fixes_seen pretty_printed new_weight ; 
+        let pretty_printed = atom_id_to_str atom_id in
+        let sofar = try Hashtbl.find fixes_seen pretty_printed with _ -> 0. in
+        let new_weight = max sofar weight in
+        Hashtbl.replace fixes_seen pretty_printed new_weight ;
         (*
-        debug "string equality: atom %d\n%S\n" atom_id pretty_printed 
-        *) 
+        debug "string equality: atom %d\n%S\n" atom_id pretty_printed
+        *)
       ) !fix_localization ;
-      fix_localization := List.filter (fun (atom_id, weight) -> 
-        let pretty_printed = atom_id_to_str atom_id in 
-        try 
+      fix_localization := List.filter (fun (atom_id, weight) ->
+        let pretty_printed = atom_id_to_str atom_id in
+        try
           let w' = Hashtbl.find fixes_seen pretty_printed in
           if w' = weight then
             Hashtbl.remove fixes_seen pretty_printed ;
-          w' = weight 
+          w' = weight
         with Not_found -> false
-      ) !fix_localization ; 
+      ) !fix_localization ;
 
-      debug "cilRep: fix-space quotient by string: %d -> %d\n" 
-        original_fixes 
-        (List.length !fix_localization) ; 
+      debug "cilRep: fix-space quotient by string: %d -> %d\n"
+        original_fixes
+        (List.length !fix_localization) ;
 
-    end ; 
+    end ;
 
     (* Use insights from instruction scheduling to partition blocks
-     * into equivalence classes with respect to edits. *) 
+     * into equivalence classes with respect to edits. *)
     if !ignore_equiv_appends then begin
       if !do_nested then begin
         debug "WARNING: --ignore-equiv-appends is not currently compatible " ;
@@ -1824,116 +1824,116 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           AtomSet.empty !fix_localization
       in
       let all_appends = Hashtbl.create 257 in
-      try 
-      let files = self#get_current_files () in 
+      try
+      let files = self#get_current_files () in
       AtomSet.iter (fun src_atom_id ->
-        let _, src_stmt = self#get_stmt src_atom_id in 
-        let src_effects = Progeq.effects_of_stmt files src_stmt in 
-        let parts = 
-          try 
-            Stats2.time "progeq partition" (fun () -> 
-            Progeq.partition files src_effects 
-            ) () 
-          with e -> 
-            debug "cilRep: WARNING: cannot compute partition: %s\n" 
-              (Printexc.to_string e) ; raise e 
-        in 
-        (* 
+        let _, src_stmt = self#get_stmt src_atom_id in
+        let src_effects = Progeq.effects_of_stmt files src_stmt in
+        let parts =
+          try
+            Stats2.time "progeq partition" (fun () ->
+            Progeq.partition files src_effects
+            ) ()
+          with e ->
+            debug "cilRep: WARNING: cannot compute partition: %s\n"
+              (Printexc.to_string e) ; raise e
+        in
+        (*
          * for each partition, filter out
          *  -- destinations with no atom_id
          *  -- destinations not in fault_loc
          * then choose pick one exemplar
          *)
-        let add_append dst_atom_id = 
+        let add_append dst_atom_id =
           let old_appends =
             ht_find all_appends dst_atom_id (fun () -> AtomSet.empty)
           in
             hrep all_appends dst_atom_id (AtomSet.add src_atom_id old_appends)
-        in 
+        in
 
-        liter (fun partition -> 
-          let partition = List.filter (fun dst_stmt -> 
-            dst_stmt.sid != 0 
+        liter (fun partition ->
+          let partition = List.filter (fun dst_stmt ->
+            dst_stmt.sid != 0
             &&
-            (List.exists (fun (fault_atom_id,fault_w) -> 
+            (List.exists (fun (fault_atom_id,fault_w) ->
               fault_atom_id = dst_stmt.sid) !fault_localization)
-          ) partition in 
+          ) partition in
           match partition with
-          | [] -> (* do nothing *) () 
-          | fault_stmt :: rest -> 
+          | [] -> (* do nothing *) ()
+          | fault_stmt :: rest ->
             (* FIXME: currently we always choose the first. This is not
              * a huge problem, since they're all semantically equivalence,
-             * but one of them may compile faster or somesuch. *) 
-            add_append fault_stmt.sid ; 
+             * but one of them may compile faster or somesuch. *)
+            add_append fault_stmt.sid ;
 
-            (* debugging *) 
-            (* 
-            if rest <> [] then begin 
-              debug "Yes Appending:\n\t%s\nAfter:\n\t%s\n" 
-                (Pretty.sprint ~width:80 
-                (dn_stmt () ({ labels = [] ; 
+            (* debugging *)
+            (*
+            if rest <> [] then begin
+              debug "Yes Appending:\n\t%s\nAfter:\n\t%s\n"
+                (Pretty.sprint ~width:80
+                (dn_stmt () ({ labels = [] ;
                   skind = src_skind ; sid = 0; succs = [] ; preds = [] ; })))
-                (Pretty.sprint ~width:80 (dn_stmt () fault_stmt)) ; 
-              let rec debug_rest lst = match lst with 
-                | [] -> () 
-                | hd :: tl -> 
-                  debug "Not After: %s\n" 
+                (Pretty.sprint ~width:80 (dn_stmt () fault_stmt)) ;
+              let rec debug_rest lst = match lst with
+                | [] -> ()
+                | hd :: tl ->
+                  debug "Not After: %s\n"
                     (Pretty.sprint ~width:80 (dn_stmt () hd)) ;
-                  debug_rest tl 
+                  debug_rest tl
               in
-              debug_rest rest 
-            end ; 
-            *) 
+              debug_rest rest
+            end ;
+            *)
           ) parts ;
-      ) all_fix_ids ; 
+      ) all_fix_ids ;
 
       Hashtbl.iter (fun dst_atom_id valid ->
         let info = self#get_fault_space_info dst_atom_id in
           hrep stmt_data dst_atom_id { info with unique_appends = Some(valid) }
       ) all_appends ;
 
-      with e -> 
-        debug "cilRep: ERROR: --ignore-equiv-appends: %s\n" 
-          (Printexc.to_string e) 
+      with e ->
+        debug "cilRep: ERROR: --ignore-equiv-appends: %s\n"
+          (Printexc.to_string e)
 
-    end ; 
+    end ;
     self#internal_debug_shared_private_size ()
 
-  method atom_to_str atom = 
+  method atom_to_str atom =
     let doc = match atom with
-      | Exp(e) -> d_exp () e 
-      | Stmt(s) -> dn_stmt () (mkStmt s) 
-    in 
-      Pretty.sprint ~width:80 doc 
+      | Exp(e) -> d_exp () e
+      | Stmt(s) -> dn_stmt () (mkStmt s)
+    in
+      Pretty.sprint ~width:80 doc
 
   method debug_info () =
     debug "cilRep: stmt_count = %d\n" (AtomSet.cardinal (self#get_atoms()));
-    debug "cilRep: stmts in weighted_path = %d\n" 
-      (List.length !fault_localization) ; 
+    debug "cilRep: stmts in weighted_path = %d\n"
+      (List.length !fault_localization) ;
     debug "cilRep: total weight = %g\n"
       (lfoldl (fun total (i,w) -> total +. w) 0.0 !fault_localization);
-    debug "cilRep: stmts in weighted_path with weight >= 1.0 = %d\n" 
+    debug "cilRep: stmts in weighted_path with weight >= 1.0 = %d\n"
       (List.length (List.filter (fun (a,b) -> b >= 1.0) !fault_localization)) ;
-    let file_count = ref 0 in 
-    let statement_range filename = 
+    let file_count = ref 0 in
+    let statement_range filename =
       AtomSet.fold (fun id (low,high) ->
         let info = self#get_fault_space_info id in
         if info.in_file = filename then
-          (min low id),(max high id) 
-        else (low,high) 
-      ) (self#get_atoms ()) (max_int,min_int) in  
-      StringMap.iter 
-        (fun k v -> incr file_count ; 
-          let low, high = statement_range k in 
-            debug "cilRep: %s (code bank/base file; atoms [%d,%d])\n" 
-              k low high 
+          (min low id),(max high id)
+        else (low,high)
+      ) (self#get_atoms ()) (max_int,min_int) in
+      StringMap.iter
+        (fun k v -> incr file_count ;
+          let low, high = statement_range k in
+            debug "cilRep: %s (code bank/base file; atoms [%d,%d])\n"
+              k low high
         ) (!global_ast_info.code_bank) ;
       StringMap.iter (fun k v ->
-        incr file_count ; 
-        let low, high = statement_range k in 
+        incr file_count ;
+        let low, high = statement_range k in
           debug "cilRep: %s (oracle file; atoms [%d,%d])\n" k low high
-      ) (!global_ast_info.oracle_code) ; 
-      debug "cilRep: %d file(s) total in representation\n" !file_count ; 
+      ) (!global_ast_info.oracle_code) ;
+      debug "cilRep: %d file(s) total in representation\n" !file_count ;
 
   method get_atoms () =
     Hashtbl.fold (fun i _ atoms ->
@@ -1945,7 +1945,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (**/**)
 
-  (** 
+  (**
 
       {8 Methods that access to statements, files, code, etc, in both the base
       representation and the code bank} *)
@@ -1955,8 +1955,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       available/necessary.  As distinct from method {b get} (horrific naming
       scheme to be rectified...later?), which gets a statement from the *current
       variant* (which may have been changed/affected by random mutations made to
-      the original). 
-      
+      the original).
+
       @param stmt_id id of statement we're looking for
       @return (filename,stmtkind) file that statement is in and the statement itself
       @raise Fail("stmt_id not found in stmt map")
@@ -1979,16 +1979,16 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   (** [get] returns the statement associated with the statement id as found in
       the 'current', 'actual' variant, {b not the code bank.}  Thus it can
       return a different answer as compared to [get_stmt], which finds the
-      statement associated with the ID in the code bank itself.  
+      statement associated with the ID in the code bank itself.
 
       @param stmt_id id of the statement we're looking for
       @return cilRep_atom the atom associated with that id.  Always a
-      statement. 
+      statement.
       @raise NotFound if the call to get_file failed.  This is most likely to
       happen if you should have called get_stmt (for example, because the
-      statement in question is from the oracle code, not the current variant). 
+      statement in question is from the oracle code, not the current variant).
   *)
-  method get stmt_id = 
+  method get stmt_id =
     try
       let info = self#get_fault_space_info stmt_id in
       let file = StringMap.find info.in_file (self#get_current_files()) in
@@ -2007,20 +2007,20 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (** gets the file ast from the {b base representation} This function can fail
      if the statement is not in the statement map or the id is otherwise not
-     valid. 
+     valid.
 
       @param stmt_id statement we're looking for
       @return Cil.file file the statement is in
       @raise Not_found(filename) if either the id or the file name associated
-      with it are not vaild. 
+      with it are not vaild.
   *)
   method get_file (stmt_id : atom_id) : Cil.file =
     let fname = (self#get_fix_space_info stmt_id).in_file in
       StringMap.find fname (self#get_current_files())
 
   (** gets the id of the atom at a given location in a file.  Will print a
-      warning and return -1 if the there is no atom found at that location 
-      
+      warning and return -1 if the there is no atom found at that location
+
       @param source_file string filename
       @param source_line int line number
       @return atom_id of the atom at the line/file combination *)
@@ -2050,21 +2050,21 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in
       sids
 
-  method private source_line_of_atom_id id = 
+  method private source_line_of_atom_id id =
     let info = self#get_fix_space_info id in
       info.at_loc.file, info.at_loc.line
 
   (** {8 Methods for loading and instrumenting source code} *)
 
   (** loads a CIL AST from a C source file or collection of C source files.
-      
+
       @param filename string with extension .txt, .c, .i, .cu, .cu
       @raise Fail("unexpected file extension") if given anything else
   *)
-  method from_source (filename : string) = begin 
-    debug "cilrep: from_source: pre: stmt_count = %d\n" (AtomSet.cardinal (self#get_atoms())); 
-    let _,ext = split_ext filename in 
-    let code_bank = 
+  method from_source (filename : string) = begin
+    debug "cilrep: from_source: pre: stmt_count = %d\n" (AtomSet.cardinal (self#get_atoms()));
+    let _,ext = split_ext filename in
+    let code_bank =
       match ext with
         "txt" ->
           lfoldl
@@ -2072,28 +2072,28 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
               let parsed = self#from_source_one_file fname in
                 StringMap.add fname parsed map)
             !global_ast_info.code_bank (get_lines filename)
-      | "c" | "i" | "cu" | "cg" -> 
-        let parsed = self#from_source_one_file filename in 
+      | "c" | "i" | "cu" | "cg" ->
+        let parsed = self#from_source_one_file filename in
           StringMap.add filename parsed !global_ast_info.code_bank
-      | _ -> 
+      | _ ->
         abort "Unexpected file extension %s in CilRep#from_source.  Permitted: .c, .i, .cu, .cu, .txt" ext
     in
       global_ast_info := {!global_ast_info with code_bank = code_bank};
       debug "cilrep: from_source: post: stmt_count: %d\n" (AtomSet.cardinal (self#get_atoms()));
 
       self#internal_debug_shared_private_size ()
-  end 
+  end
 
-  (** parses one C file 
-      
+  (** parses one C file
+
       @param filename a .c file to parse
       @return Cil.file the parsed file
       @raise Fail("parse failure") can fail in Cil/Frontc parsing *)
-  method private internal_parse (filename : string) = 
-    debug "cilRep: %s: parsing\n" filename ; 
-    let file = cil_parse filename in 
-      debug "cilRep: %s: parsed (%g MB)\n" filename (debug_size_in_mb file); 
-      file 
+  method private internal_parse (filename : string) =
+    debug "cilRep: %s: parsing\n" filename ;
+    let file = cil_parse filename in
+      debug "cilRep: %s: parsed (%g MB)\n" filename (debug_size_in_mb file);
+      file
 
   (** visits an AST and collects information about the statements for use in
       various analyses *)
@@ -2106,13 +2106,13 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     visitCilFileSameGlobals (new labelVisitor reader writer) file;
 
     if !ignore_dead_code then begin
-      debug "cilRep: computing liveness\n" ; 
-      let copy_file_ast = copy file in 
-        visitCilFileSameGlobals (my_sid_to_label) copy_file_ast ; 
+      debug "cilRep: computing liveness\n" ;
+      let copy_file_ast = copy file in
+        visitCilFileSameGlobals (my_sid_to_label) copy_file_ast ;
         visitCilFileSameGlobals (my_liveness reader writer) copy_file_ast ;
-        debug "cilRep: computed liveness\n" ; 
+        debug "cilRep: computed liveness\n" ;
     end
-    
+
   (** parses and then processes one C file.  Collects all necessary data for
       semantic checking and updates the global ast information in
       [global_ast_info].
@@ -2120,15 +2120,15 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       @param filename source file
       @return Cil.file parsed/numbered/processed Cil file *)
   method private from_source_one_file (filename : string) : Cil.file =
-    let full_filename = 
+    let full_filename =
       if Sys.file_exists filename then filename else (Filename.concat !prefix filename)
     in
-    let file = self#internal_parse full_filename in 
-      visitCilFileSameGlobals (new everyVisitor) file ; 
-      visitCilFileSameGlobals (new emptyVisitor) file ; 
-      visitCilFileSameGlobals (new varinfoVisitor varmap fix_funmap) file ; 
+    let file = self#internal_parse full_filename in
+      visitCilFileSameGlobals (new everyVisitor) file ;
+      visitCilFileSameGlobals (new emptyVisitor) file ;
+      visitCilFileSameGlobals (new varinfoVisitor varmap fix_funmap) file ;
       (* Second, number all statements and keep track of
-       * in-scope variables information. *) 
+       * in-scope variables information. *)
       visitCilFileSameGlobals my_zero file;
       visitCilFileSameGlobals (my_num stmt_count) file;
 
@@ -2145,17 +2145,17 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   *)
   method load_oracle (filename : string) = begin
     debug "cilRep: loading oracle: %s\n" filename;
-    let base,ext = split_ext filename in 
-    let filelist = 
-      match ext with 
+    let base,ext = split_ext filename in
+    let filelist =
+      match ext with
       | "c" -> [filename]
       | _ -> get_lines filename
     in
-      liter (fun fname -> 
+      liter (fun fname ->
         let file = self#from_source_one_file fname in
-        let oracle = !global_ast_info.oracle_code in 
-          global_ast_info := 
-            {!global_ast_info with oracle_code = 
+        let oracle = !global_ast_info.oracle_code in
+          global_ast_info :=
+            {!global_ast_info with oracle_code =
                 StringMap.add fname file oracle}
       ) filelist
   end
@@ -2169,12 +2169,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method internal_post_source filename = ()
 
   method compile source_name exe_name =
-    let source_name = 
+    let source_name =
       if !use_subdirs then begin
-        let source_dir,_,_ = split_base_subdirs_ext source_name in 
+        let source_dir,_,_ = split_base_subdirs_ext source_name in
           StringMap.fold
-            (fun fname _ source_name -> 
-              let fname' = Filename.concat source_dir fname in 
+            (fun fname _ source_name ->
+              let fname' = Filename.concat source_dir fname in
                 fname'^" "^source_name
             ) (self#get_current_files ()) ""
       end else source_name
@@ -2190,30 +2190,30 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   (*** Getting coverage information ***)
 
   (** instruments one Cil file for fault localization.  Outputs it to disk.
-      
+
       @param globinit optional: whether to force the call to globinit to appear
       in this file
       @param coverage_sourcename name of the output source code
       @param coverage_outname name of the path file
  *)
-  method private instrument_one_file 
-    file ?g:(globinit=false) coverage_sourcename coverage_outname = 
-    let uniq_globals = 
+  method private instrument_one_file
+    file ?g:(globinit=false) coverage_sourcename coverage_outname =
+    let uniq_globals =
       if !uniq_coverage then begin
-        let array_typ = 
-          Formatcil.cType "char[%d:siz]" [("siz",Fd (!stmt_count+1))] 
+        let array_typ =
+          Formatcil.cType "char[%d:siz]" [("siz",Fd (!stmt_count+1))]
         in
         let init_zero_info = {init = Some(makeZeroInit Cil.intType)} in
           uniq_array_va := makeGlobalVar "___coverage_array" array_typ;
           uniq_int_va := makeGlobalVar "___coverage_array_already_memset" Cil.intType;
-          [GVarDecl(!uniq_array_va,!currentLoc); 
-           GVarDecl(!uniq_int_va,!currentLoc); 
+          [GVarDecl(!uniq_array_va,!currentLoc);
+           GVarDecl(!uniq_int_va,!currentLoc);
            GVar(!uniq_int_va,init_zero_info,!currentLoc)]
       end else []
     in
-    let new_globals = 
-      if not globinit then 
-        lrev 
+    let new_globals =
+      if not globinit then
+        lrev
           (lfoldl
              (fun acc glob ->
                match glob with
@@ -2225,14 +2225,14 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       file.globals <- new_globals @ file.globals ;
 
     let prototypes = ref StringMap.empty in
-    let cov_visit = if !is_valgrind then 
+    let cov_visit = if !is_valgrind then
           new covVisitor self prototypes coverage_outname (ref false)
         else new covVisitor self prototypes coverage_outname (ref true)
     in
       (* prepend missing prototypes for instrumentation code *)
       visitCilFile cov_visit file;
       if not !is_valgrind then begin
-        file.globals <- 
+        file.globals <-
           StringMap.fold (fun _ protos accum ->
             protos @ accum
           ) !prototypes file.globals;
@@ -2247,19 +2247,19 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       output_cil_file coverage_sourcename file
 
   (**/**)
-  method instrument_fault_localization 
-    coverage_sourcename coverage_exename coverage_outname = 
+  method instrument_fault_localization
+    coverage_sourcename coverage_exename coverage_outname =
     debug "cilRep: instrumenting for fault localization\n";
-    let source_dir,_,_ = split_base_subdirs_ext coverage_sourcename in 
+    let source_dir,_,_ = split_base_subdirs_ext coverage_sourcename in
       ignore(
         StringMap.fold
           (fun fname file globinit ->
-            let file = copy file in 
-              if not !use_subdirs then 
-                self#instrument_one_file file ~g:true 
+            let file = copy file in
+              if not !use_subdirs then
+                self#instrument_one_file file ~g:true
                   coverage_sourcename coverage_outname
-              else 
-                self#instrument_one_file file ~g:globinit 
+              else
+                self#instrument_one_file file ~g:globinit
                   (Filename.concat source_dir fname) coverage_outname;
               false)
           (self#get_current_files()) true) ;
@@ -2269,35 +2269,35 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (** Determines if a given atom can be inserted after another given
       atom and still yield a valid genome (i.e., a C program that can be
-      compiled). Currently, the following checks are performed: 
+      compiled). Currently, the following checks are performed:
 
       (1) Do not insert a 'break' or 'continue' into a scope with no
       enclosing while loops, because that yields an invalid C program that
-      gcc will reject (fitness 0). 
+      gcc will reject (fitness 0).
 
       (2) Do not insert 'label_X:' into a scope that already has 'label_X:'
       because duplicate labels yield an invalid C program that gcc will
-      reject.  
+      reject.
 
       (3) If --ignore-untyped-returns is set, do not insert "return value;"
       into a function with static return type void.
 
       (4) If --ignore-dead-code is set, do not insert "X=1" if "X" is dead
-      at the given location. 
+      at the given location.
 
       This function is typically called internally by methods
-      append_source, swap_sources and replace_sources. 
-      
+      append_source, swap_sources and replace_sources.
+
       @param before optional: check if it can be inserted before
       (prepended); the default is 'after' (appended)
-      @param insert_after_sid the destination statement id 
+      @param insert_after_sid the destination statement id
       @param src_sid the source statement_id
  *)
   method can_insert
       ?(before=false)
       ?(fault_src=false)
       insert_after_sid
-      src_sid =  
+      src_sid =
     let src_info, src_gotten_code =
       if fault_src then
         self#get_fault_space_info src_sid, self#get src_sid
@@ -2307,43 +2307,43 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
     let dst_info = self#get_fault_space_info insert_after_sid in
 
-    (* don't insert break/continue if no enclosing loop *) 
+    (* don't insert break/continue if no enclosing loop *)
     (
         let needed  = src_info.syntax_needed in
         let allowed = dst_info.syntax_allowed in
           SyntaxScopeSet.subset needed allowed
     )
-    && 
+    &&
 
     (* --ignore-untyped-returns: Don't append "return 3.2;" in a function
-     * with type void *) 
-    (if !ignore_untyped_returns then begin 
-        match src_gotten_code.skind with 
-        | Return(eo,_) -> begin 
-          (* find function containing 'insert_after_sid' *) 
+     * with type void *)
+    (if !ignore_untyped_returns then begin
+        match src_gotten_code.skind with
+        | Return(eo,_) -> begin
+          (* find function containing 'insert_after_sid' *)
           (* It is safe to use the fix_funmap to get the return type here,
              since GenProg does not modify function signatures. *)
           let fd = IntMap.find dst_info.in_func !fix_funmap in
             match eo, (fd.svar.vtype) with
-            | None, TFun(tau,_,_,_) when isVoidType tau -> 
+            | None, TFun(tau,_,_,_) when isVoidType tau ->
               true
             | None, TFun(tau,_,_,_) -> false
-            | Some(e), TFun(t2,_,_,_) -> 
+            | Some(e), TFun(t2,_,_,_) ->
               let t1 = typeOf e in
               (*
-              debug "return: %s - %s\n" 
+              debug "return: %s - %s\n"
                 (Pretty.sprint ~width:80 (dn_type () t1))
                 (Pretty.sprint ~width:80 (dn_type () t2)) ;
-                *) 
+                *)
               (isScalarType t1 = isScalarType t2) &&
-              (isPointerType t1 = isPointerType t2) 
-            | _, _ -> false 
-        end 
-        | _ -> true 
-    end else true) 
-    && 
+              (isPointerType t1 = isPointerType t2)
+            | _, _ -> false
+        end
+        | _ -> true
+    end else true)
+    &&
 
-    (* --ignore-dead-code: don't append X=1 at L: if X is dead after L: *) 
+    (* --ignore-dead-code: don't append X=1 at L: if X is dead after L: *)
     ( let liveness =
         if before then dst_info.live_before else dst_info.live_after
       in
@@ -2352,37 +2352,37 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         check_available_vars !varmap (IntSet.singleton va.vid) liveness
       | _ -> true)
 
-  (* Return a Set of (atom_ids,fix_weight pairs) that one could append here 
-   * without violating many typing rules. *) 
+  (* Return a Set of (atom_ids,fix_weight pairs) that one could append here
+   * without violating many typing rules. *)
   method append_sources append_after =
     let dst = self#get_fault_space_info append_after in
-    let all_sids = 
+    let all_sids =
       match dst.unique_appends with
       | None -> !fix_localization
       | Some(valid) ->
         lfilt (fun (n,_) -> AtomSet.mem n valid) !fix_localization
-    in 
-    let sids = 
+    in
+    let sids =
       lfilt (fun (sid, _) ->
         in_scope_at !varmap dst (self#get_fix_space_info sid)
       ) all_sids
     in
-    let sids = 
+    let sids =
       lfilt (fun (sid,weight) ->
         self#can_insert append_after sid) sids
-    in 
-      lfoldl 
-        (fun retval ele -> WeightSet.add ele retval) 
+    in
+      lfoldl
+        (fun retval ele -> WeightSet.add ele retval)
         (WeightSet.empty) sids
-        
+
   (* Return a Set of atom_ids that one could swap here without violating many
    * typing rules. In addition, if X<Y and X and Y are both valid, then we'll
    * allow the swap (X,Y) but not (Y,X).  *)
-  method swap_sources append_after = 
+  method swap_sources append_after =
     (* FIXME: should we prevent swapping an if-statement with one of its
        branches? *)
     let all_sids = !fault_localization in
-    let sids = 
+    let sids =
       let here = self#get_fault_space_info append_after in
         lfilt (fun (sid, _) ->
           let there = self#get_fault_space_info sid in
@@ -2390,10 +2390,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         ) all_sids
     in
     let sids = lfilt (fun (sid, weight) -> sid <> append_after) sids in
-    let sids = lfilt (fun (sid, weight) -> 
+    let sids = lfilt (fun (sid, weight) ->
       self#can_insert ~before:true ~fault_src:true sid append_after &&
-      self#can_insert ~before:true ~fault_src:true append_after sid 
-    ) sids in 
+      self#can_insert ~before:true ~fault_src:true append_after sid
+    ) sids in
       lfoldl (fun retval ele -> WeightSet.add ele retval)
         (WeightSet.empty) sids
 
@@ -2402,42 +2402,42 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
    * allow the swap (X,Y) but not (Y,X).  *)
   method replace_sources replace =
     let all_sids = !fix_localization in
-    let sids = 
+    let sids =
       let dst = self#get_fault_space_info replace in
         lfilt (fun (sid, _) ->
           in_scope_at !varmap dst (self#get_fix_space_info sid)
         ) all_sids
     in
     let sids = lfilt (fun (sid, weight) -> sid <> replace) sids in
-    let sids = lfilt (fun (sid, weight) -> self#can_insert ~before:true replace sid) sids in 
+    let sids = lfilt (fun (sid, weight) -> self#can_insert ~before:true replace sid) sids in
 
       lfoldl (fun retval ele -> WeightSet.add ele retval)
         (WeightSet.empty) sids
 
   (**/**)
 
-  (** {8 Subatoms} 
+  (** {8 Subatoms}
 
       Subatoms are permitted on C files; subatoms are Expressions
   *)
 
-  method subatoms = true 
+  method subatoms = true
 
   method get_subatoms ~fault_src stmt_id =
     let stmt =
       if fault_src then self#get stmt_id else snd (self#get_stmt stmt_id)
     in
-    let output = ref [] in 
+    let output = ref [] in
     let _ = visitCilStmt (my_get_exp output) stmt in
-      List.map (fun x -> Exp x) !output 
+      List.map (fun x -> Exp x) !output
 
   method get_subatom ~fault_src stmt_id atom_id =
-    if fault_src then 
-      abort "You really have to call get_subatom with fault_src being false\n"; 
+    if fault_src then
+      abort "You really have to call get_subatom with fault_src being false\n";
     let subatoms = self#get_subatoms ~fault_src stmt_id in
       List.nth subatoms  atom_id
 
-  method replace_subatom_with_constant stmt_id subatom_id =  
+  method replace_subatom_with_constant stmt_id subatom_id =
     self#replace_subatom stmt_id subatom_id (Exp Cil.zero)
 
   (** {8 Templates} Templates are implemented for C files and may be loaded,
@@ -2445,7 +2445,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   method get_template tname = hfind registered_c_templates tname
 
-  method load_templates template_file = 
+  method load_templates template_file =
     if template_file <> "" then begin
       let _ = super#load_templates template_file in
         (try
@@ -2457,14 +2457,14 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             close_in fin
         end
         with _ -> ());
-    let file = 
+    let file =
       let old_casts = !Cil.insertImplicitCasts in
       Cil.insertImplicitCasts := false;
       let f = cil_parse template_file in
       Cil.insertImplicitCasts := old_casts;
         f
     in
-      visitCilFileSameGlobals (new everyVisitor) file ; 
+      visitCilFileSameGlobals (new everyVisitor) file ;
     let templateList = ref [] in
     let my_constraints = new collectTemplates templateList in
       visitCilFileSameGlobals my_constraints file;
@@ -2486,15 +2486,15 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         | _ -> abort "cilRep: template_available_mutations: non-exp subatom value"
       in
 
-    let iset_of_lst lst = 
+    let iset_of_lst lst =
       lfoldl (fun set item -> IntSet.add item set) IntSet.empty lst
     in
     let fix_stmts () =  iset_of_lst (lmap fst (self#get_fix_source_atoms())) in
 
     (* utilities *)
-    let expr_in_scope position e = 
+    let expr_in_scope position e =
       let pos_info = self#get_fault_space_info position in
-      let all_vars = IntSet.union pos_info.local_ids pos_info.global_ids in 
+      let all_vars = IntSet.union pos_info.local_ids pos_info.global_ids in
       let rec internal_match = function
         | Const _ | SizeOf _ | SizeOfStr _ | AlignOf _ -> true
         | AlignOfE(e) | UnOp(_,e,_) | CastE(_,e) | SizeOfE(e) -> internal_match e
@@ -2503,8 +2503,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           (internal_match e1) && (internal_match e2) && (internal_match e3)
         | Lval(h,o) | AddrOf(h,o) | StartOf(h,o) ->
           begin
-            let host = function 
-              | Var(v) -> IntSet.mem v.vid all_vars 
+            let host = function
+              | Var(v) -> IntSet.mem v.vid all_vars
               | Mem(e) -> internal_match e
             in
             let rec offset = function
@@ -2539,10 +2539,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           (IntSet.union (host h) (offset o))
       | _ -> IntSet.empty (* truly obscure C structures; if you want them, you can deal with them *)
     in
-    let get_exp_refs other_hole assignment = 
-      let ht,sid,sb = StringMap.find other_hole assignment in 
+    let get_exp_refs other_hole assignment =
+      let ht,sid,sb = StringMap.find other_hole assignment in
         match ht with
-          HStmt -> 
+          HStmt ->
             (* possible fixme: the assumption that fault_src is false here is not necessarily accurate, but it really shouldn't matter in practice *)
             let subatoms = 0 -- ((llen (self#get_subatoms ~fault_src:false sid)) - 1) in
             let candidates = List.fold_left (fun pairset subatom_id ->
@@ -2555,27 +2555,27 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     (* one_hole finds all satisfying assignments for a given template hole *)
     (* I've carefully constructed templates to fulfill dependencies in order *)
     (* fixme: check the sorting to make sure that's true *)
-    let process_exp_constraints (position : atom_id) assignment  = 
+    let process_exp_constraints (position : atom_id) assignment  =
       List.fold_left
         (fun current constrnt ->
           match constrnt with
-        | Ref(other_hole) -> 
-          let other_refs = get_exp_refs other_hole assignment in 
+        | Ref(other_hole) ->
+          let other_refs = get_exp_refs other_hole assignment in
             PairSet.inter other_refs current
-        | HasType(name) -> 
+        | HasType(name) ->
           (* fixme: see my note on hasType for lvals for the fragility of this
              constraint, which must be tested *)
-          PairSet.filter 
+          PairSet.filter
             (fun (stmt_id,subatom_id) ->
               let all_subatoms = self#get_subatoms ~fault_src:false stmt_id in
               let candidate_exp = get_exp_from_subatom (List.nth all_subatoms subatom_id) in
-              let candidate_exp = Cil.stripCasts candidate_exp in 
+              let candidate_exp = Cil.stripCasts candidate_exp in
               let candidate_typ = Cil.typeOf candidate_exp in
               let typ_as_str = Pretty.sprint ~width:80 (printType defaultCilPrinter () candidate_typ) in
                 (* fixme: check this comparison *)
                 typ_as_str = name)
             current
-        | HasVar(name) -> 
+        | HasVar(name) ->
           PairSet.filter
             (fun (stmt_id,subatom_id) ->
               let all_subatoms = self#get_subatoms ~fault_src:false stmt_id in
@@ -2585,7 +2585,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                   let varinfo = IntMap.find vid !varmap in
                     (* fixme: check this string comparison *)
                     varinfo.vname = name) candidate_vars)
-            current                
+            current
         | _ ->
           (* IsLocal IsGlobal *)
           debug "WARNING: encountered an exp constraint that either makes no sense or Claire hasn't settled on semantics for, skipping.";
@@ -2599,13 +2599,13 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         List.fold_left
         (fun current constrnt ->
           match constrnt with
-          | Ref(other_hole) -> 
+          | Ref(other_hole) ->
             debug "looking for: %s\n" other_hole;
             let ht,sid,sb = StringMap.find other_hole assignment in
               begin
-                match ht with 
+                match ht with
                   HStmt ->
-                    let stmt_info = self#get_fault_space_info sid in 
+                    let stmt_info = self#get_fault_space_info sid in
                       (* here is one place where a comparison on name instead of
                          integer might make sense *)
                       IntSet.inter stmt_info.usedvars current
@@ -2617,9 +2617,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                   let all_subatoms = self#get_subatoms ~fault_src:false sid in
                   let this_id = get_opt sb in
                   let this_exp = get_exp_from_subatom (List.nth all_subatoms this_id) in
-                  let this_exps_vars = get_exp_vars this_exp in 
+                  let this_exps_vars = get_exp_vars this_exp in
                     IntSet.inter current this_exps_vars
-                | HLval -> IntSet.inter (IntSet.singleton sid) current 
+                | HLval -> IntSet.inter (IntSet.singleton sid) current
               end
           | HasType(str) ->
             (* possible fixme: chances are decent that this comparision will be fragile, because
@@ -2633,20 +2633,20 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                 let varinfo = IntMap.find candidate_vid !varmap in
                 let typ_as_str = Pretty.sprint ~width:80 (printType defaultCilPrinter () varinfo.vtype) in
                   (* again, fixme: check the rules for string comparison to make sure this isn't broken.*)
-                  typ_as_str = str 
+                  typ_as_str = str
               ) current
-          | HasVar(str)  -> 
+          | HasVar(str)  ->
             IntSet.filter
               (fun candidate_vid ->
-                let varinfo = IntMap.find candidate_vid !varmap in 
+                let varinfo = IntMap.find candidate_vid !varmap in
                   (* again, fixme: check the rules for string comparison to make sure this isn't broken.*)
                   varinfo.vname = str
               ) current
-          | IsLocal -> 
-            let stmt_info = self#get_fault_space_info position in 
+          | IsLocal ->
+            let stmt_info = self#get_fault_space_info position in
               IntSet.inter stmt_info.local_ids current
-          | IsGlobal -> 
-            let stmt_info = self#get_fault_space_info position in 
+          | IsGlobal ->
+            let stmt_info = self#get_fault_space_info position in
               IntSet.inter stmt_info.global_ids current
         )
       in
@@ -2671,7 +2671,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         | _ ->
           (* Ref, HasType, IsLocal, IsGlobal *)
           debug "WARNING: encountered a stmt constraint that either makes no sense or Claire hasn't settled on semantics for, skipping.";
-          current ) 
+          current )
     in
     let one_hole position hole_name (hole : hole_info) (assignment : filled StringMap.t) =
       (* possible fixme: do the "first constraint" trick for lvals as well,
@@ -2687,22 +2687,22 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
            avoid starting with every fix path expression if possible.  Instead,
            we check if there's a Ref constraint to make our starter set, if possible *)
         let rec single_constraint = function
-          | Ref(other_hole) :: rest -> 
+          | Ref(other_hole) :: rest ->
             let candidates = get_exp_refs other_hole assignment in
               if not (PairSet.is_empty candidates) then
                 candidates,rest
-              else 
+              else
                 single_constraint rest
-          | first :: rest -> 
+          | first :: rest ->
             let exprs,constraints = single_constraint rest in
               exprs, first::constraints
-          | [] -> (* either the expression is unconstrained, or we didn't find a ref, so we just enforce that the candidate expressions must be in scope *) 
+          | [] -> (* either the expression is unconstrained, or we didn't find a ref, so we just enforce that the candidate expressions must be in scope *)
             let get_numbered_subatoms stmt =
               (* this bit of silliness is so that the double-fold below can be
                  tail-recursive.  The list ends up reversed, but it doesn't
                  matter (because of the numbering ). *)
-              fst 
-                (lfoldl (fun (lst,count) e -> 
+              fst
+                (lfoldl (fun (lst,count) e ->
                   let e = get_exp_from_subatom e in
                   (e,count) :: lst, count + 1)
                    ([],0) (self#get_subatoms ~fault_src:false stmt))
@@ -2713,55 +2713,55 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                   (fun set (e,count) ->
                     if expr_in_scope position e then
                       PairSet.add (stmt,count) set
-                    else 
+                    else
                       set
-                  ) all_set (get_numbered_subatoms stmt)) 
+                  ) all_set (get_numbered_subatoms stmt))
                   (fix_stmts()) (PairSet.empty), []
             in
             let startset,constraints' = single_constraint (ConstraintSet.elements hole.constraints) in
-            let solutions = 
+            let solutions =
               process_exp_constraints
                 position
                 assignment
                 startset
                 constraints'
             in
-          lmap (fun (atom_id,subatom_id) -> 
+          lmap (fun (atom_id,subatom_id) ->
             StringMap.add hole_name (hole.htyp,atom_id,Some(subatom_id)) assignment)
             (PairSet.elements solutions)
       end
-      | HLval -> 
+      | HLval ->
         debug "HLval!\n";
-        let startset = 
+        let startset =
           debug "looking for: %d\n" position;
           let stmt_info = self#get_fault_space_info position in
             debug "union!\n";
-            IntSet.union stmt_info.local_ids stmt_info.global_ids 
+            IntSet.union stmt_info.local_ids stmt_info.global_ids
         in
-          debug "processing constraints\n"; 
-        let solutions = 
-          process_lval_constraints 
-            position 
-            assignment 
-            startset 
+          debug "processing constraints\n";
+        let solutions =
+          process_lval_constraints
+            position
+            assignment
+            startset
             (ConstraintSet.elements hole.constraints)
         in
           debug "before solutions!\n"; flush stdout;
-          lmap (fun atom_id -> 
+          lmap (fun atom_id ->
             StringMap.add hole_name (hole.htyp,atom_id,None) assignment)
             (IntSet.elements solutions)
       | HStmt ->
-        let startset =  
+        let startset =
           IntSet.filter (fun atom -> self#can_insert ~before:true position atom) (fix_stmts ())
         in
-        let solutions = 
-          process_stmt_constraints 
-            position 
-            assignment 
-            startset 
+        let solutions =
+          process_stmt_constraints
+            position
+            assignment
+            startset
             (ConstraintSet.elements hole.constraints)
         in
-          lmap (fun atom_id -> 
+          lmap (fun atom_id ->
             StringMap.add hole_name (hole.htyp,atom_id,None) assignment)
             (IntSet.elements solutions)
     in
@@ -2771,21 +2771,21 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       (* FIXME: the weights make me sad *)
       if (llen unassigned) == 0 then [assignment,1.0] else begin
         let name,hole_info = List.hd unassigned in
-        let remaining = List.tl unassigned in 
+        let remaining = List.tl unassigned in
         let assignments = one_hole position name hole_info assignment in
-          lflatmap 
-            (fun assignment -> 
-              one_template position (assignment,remaining)) 
-            assignments 
+          lflatmap
+            (fun assignment ->
+              one_template position (assignment,remaining))
+            assignments
       end
     in
       ht_find template_cache (position, template_name)
-        (fun _ -> 
+        (fun _ ->
           let template_constraints = StringMap.fold (fun k v acc -> (k,v) :: acc) template.hole_constraints [] in
           (* possible fixme: sorting here does the expected thing? *)
           let template_constraints = List.sort (fun (k1,v1) (k2,v2) -> compare k1 k2) template_constraints in
           one_template position ((StringMap.add "instantiation_position" (HStmt,position,None) StringMap.empty),template_constraints))
-        
+
   (** {8 Structural Differencing} [min_script], [construct_rep], and
       [internal_structural_signature] are used for minimization and partially
       implement the [minimizableObject] interface.  The latter function is
@@ -2794,7 +2794,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   val min_script = ref None
 
   method construct_rep patch script =
-    let _ = 
+    let _ =
       match patch with
         Some(patch) -> self#load_genome_from_string patch
       | None ->
@@ -2802,7 +2802,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           match script with
             Some(cilfile_list,node_map) ->
               min_script := Some(cilfile_list, node_map)
-          | None -> 
+          | None ->
             abort "cilrep#construct_rep called with nothing from which to construct the rep"
         end
     in
@@ -2815,7 +2815,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       base representation and calls minimize *)
   method virtual note_success : unit -> unit
 end
-  
+
 let patchCilRep_fileCache = ref None
 
 (** [patchCilRep] is the default C representation.  The individual is a list of
@@ -2878,7 +2878,7 @@ class patchCilRep = object (self : 'self_type)
         self#internal_collect_stmt_info file reader writer
       ) files
 
-  method set_genome g = 
+  method set_genome g =
     self#updated();
     genome := [];
     let files = lfoldl (fun _ gene -> self#add_gene gene) StringMap.empty g in
@@ -2909,7 +2909,7 @@ class patchCilRep = object (self : 'self_type)
   (** @param str history string, such as is printed out by fitness
       @raise Fail("unexpected history element") if the string contains something
       unexpected *)
-  method load_genome_from_string str = 
+  method load_genome_from_string str =
     let scan_history_element b =
       Scanf.bscanf b "%c" (fun action -> match action with
         | 'l' -> Scanf.bscanf b "(%s@)"   (fun name -> LaseTemplate(name))
@@ -2944,7 +2944,7 @@ class patchCilRep = object (self : 'self_type)
     in
       self#set_genome genome
 
-  (** {8 internal_calculate_output_xform } 
+  (** {8 internal_calculate_output_xform }
 
       This is the heart of cilPatchRep -- instead of maintaining the AST for
       this variant, we regenerate it when it's needed.  *)
@@ -3051,19 +3051,19 @@ class patchCilRep = object (self : 'self_type)
       if not (allow dst) then []
       else [new replaceVisitor label ~update dst (get_src())]
     in
-    let template tname fillins this_id = 
+    let template tname fillins this_id =
       let template = self#get_template tname in
-      let block = { template.template_code with battrs = [] }in 
+      let block = { template.template_code with battrs = [] }in
       let lval_replace = hcreate 10 in
       let exp_replace = hcreate 10 in
       let stmt_replace : (string,Cil.stmt) Hashtbl.t = hcreate 10 in
         StringMap.iter
           (fun hole (typ,id,idopt) ->
-            match typ with 
-              HStmt -> 
+            match typ with
+              HStmt ->
                 let _,atom = self#get_stmt id in
                   hadd stmt_replace hole atom
-            | HExp -> 
+            | HExp ->
               let exp_id = get_opt idopt in
               let Exp(atom) = self#get_subatom ~fault_src:false id exp_id in
                 hadd exp_replace hole atom
@@ -3110,9 +3110,9 @@ class patchCilRep = object (self : 'self_type)
       | Replace_Subatom(_, _, Stmt(_)) ->
         failwith "cilrep#replace_atom_subatom"
       | Template(tname,fillins) ->
-        let _,dst,_ = StringMap.find "instantiation_position" fillins in 
+        let _,dst,_ = StringMap.find "instantiation_position" fillins in
         let newBlock = template tname fillins dst in
-          make_replace "template" dst (fun () -> newBlock) 
+          make_replace "template" dst (fun () -> newBlock)
 (*      | e ->
         debug "WARNING: internal_calculate_output_xform: edit %s not currently supported\n"
           (self#history_element_to_str e) ;
@@ -3156,47 +3156,47 @@ class patchCilRep = object (self : 'self_type)
   (* computes the source buffers for this variant.
       @return (string option * string option) list pair of filename and string
       source buffer corresponding to that file *)
-  method private internal_compute_source_buffers () = 
+  method private internal_compute_source_buffers () =
     let make_name n = if !use_subdirs then Some(n) else None in
-    let output_list = 
+    let output_list =
       match !min_script with
         Some(difflst, node_map) ->
           let old_file_map = self#get_source_files () in
-          let new_file_map = 
+          let new_file_map =
             lfoldl (fun file_map (filename,diff_script) ->
               let base_file = copy (StringMap.find filename old_file_map) in
-              let mod_file = 
+              let mod_file =
                 Cdiff.usediff base_file node_map diff_script (copy cdiff_data_ht)
               in
                 StringMap.add filename mod_file file_map)
-              (self#get_current_files ()) difflst 
+              (self#get_current_files ()) difflst
           in
             StringMap.fold
               (fun (fname:string) (cil_file:Cil.file) output_list ->
                 let source_string = output_cil_file_to_string cil_file in
-                  (make_name fname,Some(source_string)) :: output_list 
-              ) new_file_map [] 
+                  (make_name fname,Some(source_string)) :: output_list
+              ) new_file_map []
       | None ->
         StringMap.fold
           (fun (fname:string) (cil_file:Cil.file) output_list ->
             let source_string = output_cil_file_to_string cil_file in
-            (make_name fname,Some(source_string)) :: output_list 
-          ) (self#get_current_files ()) [] 
+            (make_name fname,Some(source_string)) :: output_list
+          ) (self#get_current_files ()) []
     in
       assert((llen output_list) > 0);
       output_list
 
   method private internal_structural_signature () =
-    let final_list, node_map = 
+    let final_list, node_map =
       StringMap.fold
         (fun key base (final_list,node_map) ->
             let result = ref StringMap.empty in
-            let node_map = 
+            let node_map =
               foldGlobals base (fun node_map g1 ->
                 match g1 with
-                | GFun(fd,l) -> 
+                | GFun(fd,l) ->
                   let node_id, node_map = Cdiff.fundec_to_ast node_map fd in
-                    result := StringMap.add fd.svar.vname node_id !result; 
+                    result := StringMap.add fd.svar.vname node_id !result;
                     node_map
                 | _ -> node_map
               ) node_map in
@@ -3204,15 +3204,15 @@ class patchCilRep = object (self : 'self_type)
         ) (self#get_current_files ()) (StringMap.empty, Cdiff.init_map())
     in
       { signature = final_list ; node_map = node_map}
-        
+
   method note_success () =
     self#internal_debug_shared_private_size () ;
     (* Diff script minimization *)
     let orig = self#copy () in
       orig#set_genome [];
-      Minimization.do_minimization 
-        (orig :> minimizableObjectType) 
-        (self :> minimizableObjectType) 
+      Minimization.do_minimization
+        (orig :> minimizableObjectType)
+        (self :> minimizableObjectType)
         (self#name())
 
   (**/**)
@@ -3234,7 +3234,7 @@ class astCilRep = object(self)
   (** [astCilRep] genomes are of fixed length *)
   method variable_length = false
 
-  (** 
+  (**
 
       [base] for [astCilRep] is the list of actual ASTs that represents this
       variant.  Note the distinction between this and the [patchCilRep]
@@ -3251,9 +3251,9 @@ class astCilRep = object(self)
   method from_source (filename : string) = begin
     super#from_source filename;
     base := copy !global_ast_info.code_bank;
-  end   
+  end
 
-  method deserialize ?in_channel ?global_info (filename : string) = 
+  method deserialize ?in_channel ?global_info (filename : string) =
     super#deserialize ?in_channel:in_channel ?global_info:global_info filename;
     base := copy !global_ast_info.code_bank
 
@@ -3262,8 +3262,8 @@ class astCilRep = object(self)
   (**/**)
 
   (** {8 Genome } the [astCilRep] genome is a list of atom, weight pairs. *)
-        
-  method get_genome () = 
+
+  method get_genome () =
     lmap (fun (atom_id,w) -> Stmt((self#get atom_id).skind), w)
       !fault_localization
 
@@ -3284,34 +3284,34 @@ class astCilRep = object(self)
 
 
   (** The observed behavior here is identical to that for [patchCilRep], even
-      though the implementation is different 
+      though the implementation is different
 
       @param str history string, such as is printed out by fitness
       @raise Fail("unexpected history element") if the string contains something
       unexpected
   *)
-  method load_genome_from_string str = 
+  method load_genome_from_string str =
     let split_repair_history = Str.split (Str.regexp " ") str in
       liter ( fun x ->
         let the_action = String.get x 0 in
           match the_action with
             'd' ->
-              let to_delete = 
+              let to_delete =
                 Scanf.sscanf x "%c(%d)" (fun _ id -> id)
               in
                 self#delete to_delete
-          | 'a' -> 
+          | 'a' ->
             let append_after,what_to_append =
               Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (id1,id2))
-                
+
             in
               self#append append_after what_to_append
-          | 's' -> 
-            let swap,swap_with = 
+          | 's' ->
+            let swap,swap_with =
               Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (id1,id2))
-            in 
+            in
               self#swap swap swap_with
-          | 'r' -> 
+          | 'r' ->
             let replace,replace_with =
               Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> id1,id2)
             in
@@ -3322,35 +3322,35 @@ class astCilRep = object(self)
 
   (** [put] replaces the statement in the current variant at stmt_id with a new
       statement.  Modifies the current variant.  You almost never want to call
-      this directly. 
+      this directly.
 
       @param stmt_id id of the statement to replace
-      @param cilRep_atom statement to replace it with 
+      @param cilRep_atom statement to replace it with
       @raise Fail("cilRep#put of Exp subatom") if the second parameter is not a
-      statement atom.  
+      statement atom.
   *)
   method put stmt_id (stmt : cilRep_atom) =
-    let file = self#get_file stmt_id in 
+    let file = self#get_file stmt_id in
       (match stmt with
-      | Stmt(stmt) -> 
+      | Stmt(stmt) ->
         visitCilFileSameGlobals (my_put stmt_id stmt) file;
         visitCilFileSameGlobals (new fixPutVisitor) file;
       | Exp(e) -> failwith "cilRep#put of Exp subatom" );
 
   (**/**)
   method private internal_compute_source_buffers () = begin
-    let output_list = ref [] in 
+    let output_list = ref [] in
     let make_name n = if !use_subdirs then Some(n) else None in
       StringMap.iter (fun (fname:string) (cil_file:Cil.file) ->
         let source_string = output_cil_file_to_string cil_file in
-          output_list := (make_name fname,Some(source_string)) :: !output_list 
-      ) (self#get_current_files()) ; 
+          output_list := (make_name fname,Some(source_string)) :: !output_list
+      ) (self#get_current_files()) ;
       assert((llen !output_list) > 0);
       !output_list
   end
 
   (***********************************
-   * Atomic mutations 
+   * Atomic mutations
    ***********************************)
 
 
@@ -3358,40 +3358,40 @@ class astCilRep = object(self)
     super#apply_template template_name fillins;
     failwith "Claire hasn't yet fixed template application for astCilRep."
 
-  (* Atomic Delete of a single statement (atom) *) 
+  (* Atomic Delete of a single statement (atom) *)
   method delete stmt_id = begin
-    let file = self#get_file stmt_id in 
+    let file = self#get_file stmt_id in
       super#delete stmt_id;
       visitCilFileSameGlobals (my_del stmt_id) file;
   end
 
-  (* Atomic Append of a single statement (atom) after another statement *) 
+  (* Atomic Append of a single statement (atom) after another statement *)
   method append append_after what_to_append = begin
-    let file = self#get_file append_after in 
-    let _,what = 
-      try self#get_stmt what_to_append 
-      with _ -> abort "cilRep: append: %d not found in code bank\n" what_to_append 
-    in 
-      super#append append_after what_to_append ; 
+    let file = self#get_file append_after in
+    let _,what =
+      try self#get_stmt what_to_append
+      with _ -> abort "cilRep: append: %d not found in code bank\n" what_to_append
+    in
+      super#append append_after what_to_append ;
       visitCilFileSameGlobals (my_app append_after what) file;
   end
 
   (* Atomic Swap of two statements (atoms) *)
   method swap stmt_id1 stmt_id2 = begin
-    super#swap stmt_id1 stmt_id2 ; 
+    super#swap stmt_id1 stmt_id2 ;
     if !swap_bug then begin
-    let stmt_id1,stmt_id2 = 
+    let stmt_id1,stmt_id2 =
       if stmt_id1 <= stmt_id2 then stmt_id1,stmt_id2 else stmt_id2,stmt_id1 in
-    let file = self#get_file stmt_id1 in 
+    let file = self#get_file stmt_id1 in
       visitCilFileSameGlobals (my_del stmt_id1) file;
-      let _,what = 
+      let _,what =
       try self#get_stmt stmt_id2
       with _ -> abort "cilRep: broken_swap: %d not found in code bank\n" stmt_id2
-      in 
+      in
       visitCilFileSameGlobals (my_app stmt_id1 what) file;
     end else begin
-    let f1,s1 = self#get_stmt stmt_id1 in 
-    let f2,s2 = self#get_stmt stmt_id2 in 
+    let f1,s1 = self#get_stmt stmt_id1 in
+    let f2,s2 = self#get_stmt stmt_id2 in
     let base = self#get_current_files () in
       if StringMap.mem f1 base then
         visitCilFileSameGlobals (my_rep stmt_id1 s2) (StringMap.find f1 base);
@@ -3402,8 +3402,8 @@ class astCilRep = object(self)
 
   (* Atomic replace of two statements (atoms) *)
   method replace stmt_id1 stmt_id2 = begin
-    let _,replace_with = self#get_stmt stmt_id2 in 
-      super#replace stmt_id1 stmt_id2 ; 
+    let _,replace_with = self#get_stmt stmt_id2 in
+      super#replace stmt_id1 stmt_id2 ;
       visitCilFileSameGlobals (my_rep stmt_id1 replace_with) (self#get_file stmt_id1)
   end
 
@@ -3420,22 +3420,22 @@ class astCilRep = object(self)
     let file = self#get_file stmt_id in
       super#replace_subatom stmt_id subatom_id atom ;
       match atom with
-      | Stmt(x) -> failwith "cilRep#replace_atom_subatom" 
-      | Exp(e) -> 
+      | Stmt(x) -> failwith "cilRep#replace_atom_subatom"
+      | Exp(e) ->
         visitCilFileSameGlobals
           (new replaceSubatomVisitor stmt_id subatom_id e)
           file
   end
 
   method internal_structural_signature () =
-	let final_list, node_map = 
+	let final_list, node_map =
 	  StringMap.fold
 		(fun key base (final_list,node_map) ->
 		  let result = ref StringMap.empty in
-		  let node_map = 
+		  let node_map =
 			foldGlobals base (fun node_map g1 ->
 			  match g1 with
-			  | GFun(fd,l) -> 
+			  | GFun(fd,l) ->
 				let node_id, node_map = Cdiff.fundec_to_ast node_map fd in
 				  result := StringMap.add fd.svar.vname node_id !result; node_map
 			  | _ -> node_map
@@ -3448,24 +3448,24 @@ class astCilRep = object(self)
   method note_success () =
     (* Diff script minimization *)
     let orig = self#copy () in
-    let orig_genome = 
+    let orig_genome =
       lmap
         (fun (atom_id,w) ->
-          (Stmt((snd (self#get_stmt atom_id)).skind)),w) 
+          (Stmt((snd (self#get_stmt atom_id)).skind)),w)
         !fault_localization in
       orig#set_genome orig_genome;
-      Minimization.do_minimization 
-        (orig :> minimizableObjectType) 
-        (self :> minimizableObjectType) 
+      Minimization.do_minimization
+        (orig :> minimizableObjectType)
+        (self :> minimizableObjectType)
         (self#name())
 
 end
 
-(* Global initialization. Moved this down here while debugging Dorn's 
+(* Global initialization. Moved this down here while debugging Dorn's
  * code so that you wouldn't have to pass in a variant to get access to C
- * parsing. Since this comes after Cilrep, it can make one. *) 
-let _ = 
-  fill_va_table := (fun () -> 
+ * parsing. Since this comes after Cilrep, it can make one. *)
+let _ =
+  fill_va_table := (fun () ->
   let vnames =
     [ "fclose"; "fflush"; "fopen"; "fprintf"; "memset"; "vgPlain_fmsg"; "_coverage_fout" ; "vgPlain_memset" ]
   in
@@ -3474,12 +3474,12 @@ let _ =
     Printf.fprintf chan "#include <stdio.h>\n";
     Printf.fprintf chan "#include <string.h>\n";
     Printf.fprintf chan "FILE * _coverage_fout;\n";
-    Printf.fprintf chan "int main() { return 0; }\n"; 
+    Printf.fprintf chan "int main() { return 0; }\n";
     close_out chan;
-    let temp_variant = (new patchCilRep) in 
+    let temp_variant = (new patchCilRep) in
 
     let preprocessed = Filename.temp_file "tmp" ".c" in
-    debug "cilRep: preprocessing IO function signatures: %s %s\n" 
+    debug "cilRep: preprocessing IO function signatures: %s %s\n"
       source_file preprocessed;
     let cleanup () =
       if Sys.file_exists source_file then
@@ -3489,11 +3489,11 @@ let _ =
     in
     if temp_variant#preprocess source_file preprocessed then begin
       try
-        let cilfile = 
-          try cil_parse preprocessed 
-          with e -> 
-            debug "cilrep: fill_va_table: Frontc.parse: %s\n" 
-              (Printexc.to_string e) ; raise e 
+        let cilfile =
+          try cil_parse preprocessed
+          with e ->
+            debug "cilrep: fill_va_table: Frontc.parse: %s\n"
+              (Printexc.to_string e) ; raise e
         in
         if !Errormsg.hadErrors then
           Errormsg.parse_error
@@ -3543,8 +3543,8 @@ let _ =
       (name, Fv vi) :: lst
     ) [("wb_arg", Fg("wb")); ("a_arg", Fg("a"));] vnames
   in
-  let cstmt stmt_str args = 
-    Formatcil.cStmt ("{"^stmt_str^"}") (fun _ -> failwith "no new varinfos!")  !currentLoc 
+  let cstmt stmt_str args =
+    Formatcil.cStmt ("{"^stmt_str^"}") (fun _ -> failwith "no new varinfos!")  !currentLoc
     (args@static_args)
   in
   let global_decls = lfoldl (fun decls x ->
@@ -3554,4 +3554,4 @@ let _ =
     ) StringMap.empty vnames
   in
   cstmt, global_decls
-  ) 
+  )

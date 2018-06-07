@@ -135,7 +135,7 @@ let find_prefix x m =
   let _, map, value = unzip [] x m in
   List.rev (fold (fun k v lst -> (k, v) :: lst) m [])
 
-let contains_prefix_of x m = 
+let contains_prefix_of x m =
   let rec helper crumbs list map value =
     match list with
       l :: ls ->

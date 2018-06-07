@@ -68,7 +68,7 @@ let elfRep_version = "1"
 class elfRep = object (self : 'self_type)
   (** [Elfrep.elfRep] inherits from [Binrep.binRep] to avoid duplicating
       coverage generation code between [Elfrep.elfRep] and [Asmrep.asmRep] *)
-  inherit binRep as super 
+  inherit binRep as super
 
   (* FIXME, Eric: document these? *)
   (* JD: These values must be mutable to allow self#copy() to work. I don't know
@@ -113,7 +113,7 @@ class elfRep = object (self : 'self_type)
       let str = file_to_string tmp_file in
         (try Unix.unlink tmp_file with _ -> ());
         [ None, Some(str) ]
-          
+
   method serialize ?out_channel ?global_info (filename : string) =
     let fout =
       match out_channel with
@@ -134,13 +134,13 @@ class elfRep = object (self : 'self_type)
     in
       fst atoms
 
-  method get_compiler_command () = 
+  method get_compiler_command () =
     (* note the slight difference between this and faultlocSuper#get_compiler_command *)
     "__COMPILER_NAME__ __SOURCE_NAME__ __EXE_NAME__ 2>/dev/null >/dev/null"
 
   (**/**)
 
-  (** uses objdump to find the instruction borders in a given elf file 
+  (** uses objdump to find the instruction borders in a given elf file
       @param filename ELF file to inspect
       @return address_list list of addresses corresponding to instruction
       borders in filename
@@ -150,63 +150,63 @@ class elfRep = object (self : 'self_type)
     let trim str =
       if Str.string_match (Str.regexp "^[ \t]*\\([^ \t].+\\)$") str 0 then
         Str.matched_group 1 str
-      else str 
+      else str
     in
     let parse_address line =
-      let line_length = 
+      let line_length =
         if String.length line > 32 then 21 else String.length line - 10
       in
-      let line_lst = 
+      let line_lst =
         Str.split whitespace_regexp (String.sub line 10 line_length)
       in
-        lfoldl 
+        lfoldl
           (fun bytes str ->
-            try 
+            try
               (int_of_string ("0x"^str)) :: bytes
             with Failure "int_of_string" -> bytes)
           [] line_lst
     in
     let parse_addresses lines =
-      let header_re = 
-        Str.regexp "^\\([0-9a-fA-F]+\\) <\\(.+\\)>:$" 
+      let header_re =
+        Str.regexp "^\\([0-9a-fA-F]+\\) <\\(.+\\)>:$"
       in
       let lines_match =
         List.filter
-          (fun line -> 
-            if not (Str.string_match header_re line 0) 
+          (fun line ->
+            if not (Str.string_match header_re line 0)
               && (String.length line) > 10 then
               try
-                ignore (int_of_string ("0x"^(trim (String.sub line 1 7)))) ; 
+                ignore (int_of_string ("0x"^(trim (String.sub line 1 7)))) ;
                 true
               with Failure "int_of_string" -> false
             else false)
-          lines 
+          lines
       in
       let results = lmap parse_address lines_match in
-        List.sort compare results 
+        List.sort compare results
     in
       ignore (system ("objdump -j .text -d "^filename^">"^tmp)) ;
       lmap llen (parse_addresses (get_lines tmp))
   end
 
-  (** @param filename ELF file from which to read bytes 
+  (** @param filename ELF file from which to read bytes
       @return bytes array of lists of bytes of the file *)
   method bytes_of (filename : string) =
     let raw_bytes = ref (Array.to_list (text_data filename)) in
       debug "raw_bytes:%d\n" (List.length !raw_bytes) ;
-      let lst = 
+      let lst =
         if !elf_risc then
-          let _,tmp_bytes = 
+          let _,tmp_bytes =
             lfoldl (fun (holder,tmp_bytes) a ->
-              let holder = a :: holder in 
-                if (llen holder) = 4 then 
+              let holder = a :: holder in
+                if (llen holder) = 4 then
                   [], (lrev holder) :: tmp_bytes
-                else 
-                  holder,tmp_bytes) 
+                else
+                  holder,tmp_bytes)
               ([],[]) !raw_bytes
-          in 
+          in
             lrev tmp_bytes
-        else 
+        else
           List.map
             (fun size ->
               let tmp = ref [] in
@@ -215,8 +215,8 @@ class elfRep = object (self : 'self_type)
                   raw_bytes := List.tl !raw_bytes
                 done;
                 List.rev !tmp) (self#disasm filename)
-      in 
-        Array.of_list lst 
+      in
+        Array.of_list lst
 
 
   (** @return flat array of bytes of the file (not grouped by instruction
@@ -232,13 +232,13 @@ class elfRep = object (self : 'self_type)
      [EMS] Yes, this is absolutely not working, (I believe because
      of the need to read C objects) I've changed the above to an
      error, is there a way to skip the attempted loading of
-     serialized objects for elfrep? 
+     serialized objects for elfrep?
      [CLG] well that's basically what you're doing, already... I mean we
      could move this skip deserialization failure elsewhere but it
      accomplishes what you want here. I got rid of the extraneous stuff. *)
 
-    
-  (** Helper function for [atom_id_of_source_line] 
+
+  (** Helper function for [atom_id_of_source_line]
       @param line line in file
       @return instruction offset in that line *)
   method private address_offset_to_instruction line =
@@ -256,7 +256,7 @@ class elfRep = object (self : 'self_type)
       @param source_file file in which the line is found
       @param source_line line in file
       @return list of indices into genome (instruction id) corresponding to [source_line] (in
-      source_file). 
+      source_file).
   *)
   method atom_id_of_source_line source_file source_line =
     let instruction_id = self#address_offset_to_instruction(source_line) in
@@ -276,19 +276,19 @@ class elfRep = object (self : 'self_type)
         (List.tl
            (List.fold_left
               (fun acc el -> ((self#atom_length el) + (List.hd acc)) :: acc)
-              [0] lsts)) 
+              [0] lsts))
     in
     let place el lst =
       let out = ref (-1) in
         Array.iteri
           (fun i it ->
-            if (!out < 0) && (el = it) then out := i) 
+            if (!out < 0) && (el = it) then out := i)
           (Array.of_list lst);
-        !out 
+        !out
     in
     let g_one = self#get_genome () in    (* raw genomes *)
     let b_one = borders g_one in          (* lengths at atom borders *)
-    let combine_function one two = 
+    let combine_function one two =
       let inter = IntSet.elements (IntSet.inter one two) in
         lmap (fun ele -> place ele b_one) inter
     in
@@ -297,16 +297,16 @@ class elfRep = object (self : 'self_type)
       combine_function
 
 (**/**)
-  method private mem_mapping _ _ = hcreate 10 
+  method private mem_mapping _ _ = hcreate 10
 
-  method private combine_coverage samples optional_mapping = 
+  method private combine_coverage samples optional_mapping =
     let size = Array.length (self#flat_bytes()) in
-    let results = 
+    let results =
       List.fold_left
         (fun acc (addr, count) ->
           if (!address <= addr) && (addr <= (!address + size)) then
             (addr,count) :: acc
-          else acc) [] samples 
+          else acc) [] samples
     in
       List.sort pair_compare results
 
@@ -334,8 +334,8 @@ class elfRep = object (self : 'self_type)
 (**/**)
 
   (** {6 {L The Elfrep edit functions like {b swap}, {b append} and {b delete}
-      must maintain two invariants: 
-      {ol 
+      must maintain two invariants:
+      {ol
       {- the length of bytes must never drop below its initial length
       because the fault localization IDs are never updated.}
       {- the total number of bytes held in the lists in bytes must
@@ -371,7 +371,7 @@ class elfRep = object (self : 'self_type)
   (** @raise Abort if the rep is operating on risc *)
   method delete i =
     let starting_length = Array.length !bytes in
-      if !elf_risc then 
+      if !elf_risc then
         abort "Error: elfrep#delete is not implemented for risc\n"
       else begin
         super#delete i ;

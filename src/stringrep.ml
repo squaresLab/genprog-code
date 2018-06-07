@@ -252,7 +252,7 @@ class stringRep = object (self : 'self_type)
             false
       ) !fix_localization
 
-  method available_mutations x = 
+  method available_mutations x =
     let compute_available _ =
       lfilt
         (fun (mutation,prob) ->
@@ -278,7 +278,7 @@ class stringRep = object (self : 'self_type)
     in
       collect WeightSet.empty
 
-  method append_sources x = 
+  method append_sources x =
     self#weight_set_of_generator (self#append_source_gen x)
 
   method private append_source_gen x =
@@ -290,7 +290,7 @@ class stringRep = object (self : 'self_type)
     in
       gen
 
-  method swap_sources x = 
+  method swap_sources x =
     self#weight_set_of_generator (self#swap_source_gen x)
 
   method private swap_source_gen x =
@@ -393,4 +393,3 @@ class stringRep = object (self : 'self_type)
       ) !ranges []
       )()
 end
-

@@ -49,7 +49,7 @@ let template_cache_file = ref ""
 
 let _ =
   options := !options @ [
-      "--templates", Arg.Set_string templates_file, 
+      "--templates", Arg.Set_string templates_file,
       " Use repair templates; read from file X.  Default: none";
       "--template-cache", Arg.Set_string template_cache_file,
        "save the template computations to avoid wasting time." ;
@@ -60,7 +60,7 @@ let _ =
    fixme: possibly fix that at some point?
    Additionally, I deal with the lvals by manipulating them as sets of integer
    ids instead of the more general names, mostly for convenience, but that may
-   be worth a fixme too at some point. 
+   be worth a fixme too at some point.
 *)
 type hole_type = HStmt | HExp | HLval
 (* differences from original: eliminated fix_path and fault_path constraints.
@@ -73,15 +73,15 @@ type hole_type = HStmt | HExp | HLval
 (* also eliminated inscope, which now implicitly applies to anything, and means
    that all variables in a hole must be in scope at the instantiation position *)
 (* Ref: referenced in the hole named by the string.*)
-type constraints =  Ref of string 
+type constraints =  Ref of string
                     | HasType of string (* name *)
                     | IsLocal | IsGlobal | HasVar of string
 
-module OrderedConstraint = 
+module OrderedConstraint =
 struct
   type t = constraints
       (* possible FIXME: it might make sense to make this a real comparision *)
-  let compare = compare 
+  let compare = compare
 end
 
 module ConstraintSet = Set.Make(OrderedConstraint)
@@ -89,7 +89,7 @@ module ConstraintSet = Set.Make(OrderedConstraint)
 type hole = hole_type * ConstraintSet.t
 
 module OrderedHole =
-struct 
+struct
   type t = hole
   let compare h1 h2 =
     match h1, h2 with
@@ -117,7 +117,7 @@ type hole_info =
       constraints : ConstraintSet.t
     }
 
-type 'a template = 
+type 'a template =
     {
       template_name : string;
       (* fixme: add possible constraints on instantiation position besides
@@ -125,7 +125,7 @@ type 'a template =
       (* another possible fixme: right now, position hole_type must be a stmt *)
       position : hole_type ;
       hole_constraints : hole_info StringMap.t;
-      template_code : 'a; 
+      template_code : 'a;
     }
 
 (* a instantiated template is instantiated at a location,
@@ -148,8 +148,8 @@ class collectTemplates returnTemplates = object
     val mutable pname = ""
 
     method vfunc fundec =
-      let gettyp attrs = 
-        let [Attr(_,[AStr(typ)])] = 
+      let gettyp attrs =
+        let [Attr(_,[AStr(typ)])] =
           filterAttributes "type" attrs in
           match typ with
             "stmt" -> HStmt
@@ -163,8 +163,8 @@ class collectTemplates returnTemplates = object
         ptyp <- HStmt;
         pname = "";
       in
-      let [position] = 
-        lfilt (fun varinfo -> 
+      let [position] =
+        lfilt (fun varinfo ->
           match varinfo.vtype with
             (* possible FIXME: check that this works *)
             TNamed(tinfo,_) -> tinfo.tname = "position"
@@ -173,8 +173,8 @@ class collectTemplates returnTemplates = object
         debug "pname: %s\n" pname;
         ptyp <- gettyp position.vattr;
 
-        let holes = 
-          lfilt (fun varinfo -> 
+        let holes =
+          lfilt (fun varinfo ->
             match varinfo.vtype with
               TNamed(tinfo,_) -> tinfo.tname = "hole"
             | _ -> false) fundec.slocals
@@ -182,11 +182,11 @@ class collectTemplates returnTemplates = object
           liter
             (fun varinfo ->
               let htyp = gettyp varinfo.vattr in
-              let constraints = 
+              let constraints =
                 lfoldl
                   (fun constraints attr ->
                     match attr with
-                    | Attr("reference", [AStr(v)]) -> 
+                    | Attr("reference", [AStr(v)]) ->
                       ConstraintSet.add (Ref(v)) constraints
                     | Attr("hastype",[AStr(v)]) ->
                       ConstraintSet.add(HasType(v)) constraints
@@ -201,14 +201,14 @@ class collectTemplates returnTemplates = object
                       constraints
                   ) ConstraintSet.empty varinfo.vattr
               in
-                hole_info <- StringMap.add varinfo.vname 
+                hole_info <- StringMap.add varinfo.vname
                   ({htyp=htyp; constraints=constraints}) hole_info)
             holes;
           DoChildren
 
 (* I kind of think it may be possible to do something like, all code b/f the
    instantiation position should match the surrounding context.  But that will
-   be hard to implement for now so I'm ignoring the thought *)          
+   be hard to implement for now so I'm ignoring the thought *)
     method vblock block =
       match block.battrs with
         [] -> DoChildren
@@ -216,7 +216,7 @@ class collectTemplates returnTemplates = object
         let posattr = filterAttributes pname block.battrs in
           if (llen posattr) > 0 then begin
             let newattrs = dropAttribute pname block.battrs in
-            let template = 
+            let template =
               { template_name = template_name;
                 position = ptyp;
                 hole_constraints = hole_info;

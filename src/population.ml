@@ -56,19 +56,19 @@ let output_format = ref "txt"
    set *)
 let tournament_p = ref 1.00
 
-let _ = 
+let _ =
   options := !options @ [
     "--popsize", Arg.Set_int popsize, "X variant population size";
 
-    "--crossover", Arg.Set_string crossover, 
+    "--crossover", Arg.Set_string crossover,
     "X use X as crossover [one,back,subset,flat]";
 
     "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
 
-    "--format", Arg.Set_string output_format, 
+    "--format", Arg.Set_string output_format,
     "X format for serialized population.  Options: bin/binary, txt.  Default: txt";
 
-    "--tournament-size", Arg.Set_int tournament_k, 
+    "--tournament-size", Arg.Set_int tournament_k,
     "X use x as tournament size";
   ]
 
@@ -87,7 +87,7 @@ struct
     | "patch" | "subset"
     | "uniform" | "patch-old" -> variable_length
     | x -> abort  "unknown --crossover %s\n" x
-    
+
   (** {b generate} generates a population.  Generate_function generates a new
       variant.  incoming is the incoming population.  Size is the desired
       population size *)
@@ -109,18 +109,18 @@ struct
   let serialize ?out_channel (population : ('a,'b) t) (filename : string) =
     match !output_format with
       "bin" | "binary" ->
-        let fout = 
+        let fout =
           match out_channel with
             Some(v) -> v
-          | None -> open_out_bin filename 
+          | None -> open_out_bin filename
         in
           Marshal.to_channel fout (population_version) [] ;
           liter (fun variant -> variant#serialize ?out_channel:(Some(fout)) ?global_info:(Some(false)) filename) population;
           if out_channel = None then close_out fout
     | "txt" ->
       debug "serializing population to txt; ?out_channel ignored\n";
-      let fout = open_out filename in 
-        liter (fun variant -> 
+      let fout = open_out filename in
+        liter (fun variant ->
           let name = variant#name () in
             output_string fout (name^"\n"))
           population;
@@ -134,20 +134,20 @@ struct
   (* deserialize can fail if the file does not conform to the expected format
      for Marshal or if there is a version mismatch between the population module
      that wrote the binary file and this one (that is loading it). *)
-  let deserialize ?in_channel filename original = 
+  let deserialize ?in_channel filename original =
     (* the original should have loaded the global state *)
-    let fin = 
+    let fin =
       match in_channel with
         Some(v) -> v
       | None -> open_in_bin filename in
     let pop = ref [] in
       try
-        if !output_format = "txt" then 
+        if !output_format = "txt" then
           failwith "txt format, skipping binary attempt";
         let version = Marshal.from_channel fin in
           if version <> population_version then begin
             debug "population: %s has old version: %s\n" filename version;
-            failwith "version mismatch" 
+            failwith "version mismatch"
           end ;
           let attempt = ref 1 in
           try
@@ -162,7 +162,7 @@ struct
         close_in fin;
         pop := [];
         try
-          let individuals = get_lines filename in 
+          let individuals = get_lines filename in
             liter
               (fun genome ->
                 let copy = original#copy() in
@@ -200,7 +200,7 @@ struct
         | [] -> select_one ()
         | indiv :: rest ->
           let taken = (1.0 = p) || (Random.float 1.0 <= p) in
-            if taken then indiv else walk (p *. (1.0 -. !tournament_p)) rest 
+            if taken then indiv else walk (p *. (1.0 -. !tournament_p)) rest
       in
         walk !tournament_p sorted
     in
@@ -221,7 +221,7 @@ struct
   (** {b Selection} population desired_size dispatches to the appropriate
       selection function. Currently we have only tournament selection implemented,
       but if/we we add others we can choose between them here *)
-  let selection ?(compare_func=compare_fitness) population desired = 
+  let selection ?(compare_func=compare_fitness) population desired =
     tournament_selection ~compare_func population desired
 
   (** Crossover is an operation on more than one variant, which is why it
@@ -246,35 +246,35 @@ struct
       (original :('a,'b) Rep.representation)
       (variant1 :('a,'b) Rep.representation)
       (variant2 :('a,'b) Rep.representation)
-      : (('a,'b) representation) list = 
+      : (('a,'b) representation) list =
     let h1 = variant1#get_history () in
-    let h2 = variant2#get_history () in 
+    let h2 = variant2#get_history () in
     let wp = lmap fst (variant1#get_faulty_atoms ()) in
     let point = if test=0 then Random.int (llen wp) else test in
     let first_half,second_half = split_nth wp point in
     let c_one = original#copy () in
     let c_two = original#copy () in
-    let h11, h12 = 
+    let h11, h12 =
       List.partition
         (fun edit ->
           match edit with
           | Delete(num)
-          | Append(num, _) 
-          | Swap(num,_) 
+          | Append(num, _)
+          | Swap(num,_)
           | Replace(num,_) -> List.mem num first_half
-          | _ -> 
-            abort "unexpected edit in history in patch_old_behavior crossover") 
+          | _ ->
+            abort "unexpected edit in history in patch_old_behavior crossover")
         h1
     in
-    let h21, h22 = 
+    let h21, h22 =
       List.partition
         (fun edit ->
           match edit with
-          | Delete(num) | Append(num, _) 
-          | Swap(num,_) | Replace(num,_)  -> 
+          | Delete(num) | Append(num, _)
+          | Swap(num,_) | Replace(num,_)  ->
             List.mem num first_half
-          | _ -> 
-            abort "unexpected edit in history in patch_old_behavior crossover") 
+          | _ ->
+            abort "unexpected edit in history in patch_old_behavior crossover")
         h2
     in
     let new_h1 = lmap (c_one#history_element_to_str) (h11 @ h22) in
@@ -314,9 +314,9 @@ struct
       : (('a,'b) representation) list =
     let child1 = original#copy () in
     let child2 = original#copy () in
-    let point1,point2 = 
-      if test <> 0 then test,test 
-      else 
+    let point1,point2 =
+      if test <> 0 then test,test
+      else
         (* this is a little squirrly.  available_crossover_points returns a
            set of legal crossover points along the genome list and a function
            to combine the variant's legal crossover points with another
@@ -327,10 +327,10 @@ struct
         let legal2' = interfun2 legal2 legal1 in
           (* if variants are of stable length, we only need to choose one
              point *)
-          if not variant1#variable_length then 
+          if not variant1#variable_length then
             let rand = List.hd (random_order legal1') in
               rand,rand
-          else 
+          else
             let rand1 = List.hd (random_order legal1') in
             let rand2 = List.hd (random_order legal2') in
               rand1,rand2
@@ -357,13 +357,13 @@ struct
     (* CLG: flat crossover is now implemented by default on elfrep based on
        available_crossover_points *)
     | "flat" | "flatten"
-    | "one" | "patch-one-point" -> 
+    | "one" | "patch-one-point" ->
       crossover_one_point ~test original variant1 variant2
     | "back" -> crossover_one_point ~test original variant1 original
     | "patch" | "subset"
-    | "uniform" -> crossover_patch_subset original variant1 variant2 
-    | "patch-old" -> 
-      crossover_patch_old_behavior ~test original variant1 variant2 
+    | "uniform" -> crossover_patch_subset original variant1 variant2
+    | "patch-old" ->
+      crossover_patch_old_behavior ~test original variant1 variant2
     | x -> abort "unknown --crossover %s\n" x
 
   (** crossover population original_variant performs crossover over the entire

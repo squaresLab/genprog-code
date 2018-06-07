@@ -72,7 +72,7 @@ class llvmRep = object (self : 'self_type)
     string_to_file filename !genome
 
   method get_compiler_command () =
-    match !compiler_command with 
+    match !compiler_command with
     | "" -> "cat __SOURCE_NAME__|"^llvm_mutate^" -l -o __EXE_NAME__"
     |  x -> x
 

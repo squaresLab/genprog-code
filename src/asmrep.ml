@@ -48,7 +48,7 @@ open Stringrep
 let asmRep_version = "7"
 
 (**/**)
-  
+
 let label_regex = Str.regexp ".*:$"
 let dir_regex = Str.regexp "^[ \t]*\\..*[^:]$"
 let debug_label_regex = Str.regexp "^\\.L[^0-9].*:$"
@@ -60,7 +60,7 @@ struct
 end
 
 module StringTrie = Trie.Make(OrderedChar)
-  
+
 (**/**)
 
 (** @version 7 *)
@@ -143,7 +143,7 @@ class asmRep = object (self : 'self_type)
       let percentage = (1.0 -. ((float_of_int new_len) /. (float_of_int orig_len))) *. 100.0 in
       debug "asmRep: fix space reduced from %d lines to %d lines (%.2f%%)\n" orig_len new_len percentage;
 
-  method available_mutations mut_id = 
+  method available_mutations mut_id =
     lfilt (fun (mutation,prob) ->
       match mutation with
         Delete_mut -> (* Don't delete labels *)
@@ -184,7 +184,7 @@ class asmRep = object (self : 'self_type)
       let trie = IntMap.find file !label_tries in
       contains_label (self#get line) trie
     in
-    let file = self#base_for_atom_id x in    
+    let file = self#base_for_atom_id x in
     let can_append line =
       if contains_label (self#get line) !all_labels_trie then
         (x <> line) && (label_in_file file line)
