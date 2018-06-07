@@ -1284,7 +1284,6 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
         !variants_explored_sofar num_all_edits (variant#name  ())
         (TestSet.cardinal test_set) ;
       assert(not (TestSet.is_empty test_set));
-      let cf_before = !compile_failures in
       let success =
         test_to_first_failure ~allowed:(fun t -> TestSet.mem t test_set) variant
       in
