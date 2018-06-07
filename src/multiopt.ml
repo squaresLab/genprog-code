@@ -366,8 +366,6 @@ and ngsa_ii_internal
   end (* end ngsa_ii_sort *)
   in
 
-  let crowded_compare, f, distance = ngsa_ii_sort pop in
-
   let _ =
     debug "multiopt: crossover and mutation\n"
   in
