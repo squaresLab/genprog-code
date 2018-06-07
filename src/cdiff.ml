@@ -580,39 +580,38 @@ let fundec_to_ast (node_info : tree_node IntMap.t) (f:Cil.fundec) =
       n.nid
   and stmt_children (s : Cil.stmt) : node_id array =
     match s.skind with
-    | Goto _ | Break _  | Continue _  -> [| |]
+    | Goto _ | ComputedGoto _ | Break _  | Continue _  -> [| |]
     | Instr ils ->
-      let lst : node_id list = lfoldl (fun a i -> (instr_children i) @ a) [] ils in
-      Array.of_list lst
-    | Return (Some(e),_) when !exp_diff_level  -> Array.of_list (exp_to_node e)
+       let lst : node_id list =
+         lfoldl (fun a i -> (instr_children i) @ a) [] ils in
+       Array.of_list lst
+    | Return (Some (e), _) when !exp_diff_level -> Array.of_list (exp_to_node e)
     | Return _ -> [| |]
-    | If(e,b1,b2,l)  ->
-      let stmts =
-        [| stmt_to_node (wrap_block b1) ;
-           stmt_to_node (wrap_block b2) |]
-      in
-      let exps = Array.of_list (exp_to_node e) in
-        Array.append exps stmts
-    | Switch(e,b,sl,l) ->
-      let stmts =
-        [| stmt_to_node (wrap_block b) |]
-      in
-      let exps = Array.of_list (exp_to_node e) in
-        Array.append exps stmts
-    | Loop(b,l,so1,so2) ->
-      [| stmt_to_node (wrap_block b) |]
-    | TryFinally(b1,b2,l) ->
-      [| stmt_to_node (wrap_block b1) ; stmt_to_node (wrap_block b2) |]
-    | TryExcept(b1,(il,e),b2,l) ->
-      let instrs = Array.of_list (lfoldl (fun a i -> a @ (instr_children i)) [] il) in
-      let exps = Array.of_list (exp_to_node e) in
-      let stmts =
-        [| stmt_to_node (wrap_block b1) ; stmt_to_node (wrap_block b2) |]
-      in
-        Array.concat [instrs;exps;stmts]
-    | Block(block) ->
-      let children = List.map stmt_to_node block.bstmts in
-        Array.of_list children
+    | If (e, b1, b2, _)  ->
+       let stmts =
+         [| stmt_to_node (wrap_block b1);
+            stmt_to_node (wrap_block b2) |]
+       in
+       let exps = Array.of_list (exp_to_node e) in
+       Array.append exps stmts
+    | Switch (e, b, _, _) ->
+       let stmts =
+         [| stmt_to_node (wrap_block b) |] in
+       let exps = Array.of_list (exp_to_node e) in
+       Array.append exps stmts
+    | Loop (b, _, _, _) -> [| stmt_to_node (wrap_block b) |]
+    | TryFinally (b1, b2, _) ->
+       [| stmt_to_node (wrap_block b1); stmt_to_node (wrap_block b2) |]
+    | TryExcept (b1, (il, e), b2, _) ->
+       let instrs =
+         Array.of_list (lfoldl (fun a i -> a @ (instr_children i)) [] il) in
+       let exps = Array.of_list (exp_to_node e) in
+       let stmts =
+         [| stmt_to_node (wrap_block b1); stmt_to_node (wrap_block b2) |] in
+       Array.concat [instrs; exps; stmts]
+    | Block (block) ->
+       let children = List.map stmt_to_node block.bstmts in
+       Array.of_list children
   in
   let b = wrap_block f.sbody in
     stmt_to_node b , !node_info
