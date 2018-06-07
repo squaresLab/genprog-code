@@ -552,14 +552,14 @@ let fundec_to_ast (node_info : tree_node IntMap.t) (f:Cil.fundec) =
     end else []
   and exp_children e =
     match e with
-    | Const _ | Lval _  | SizeOf _
-    | SizeOfStr _  | AlignOf _  | AddrOf _
-    | StartOf _  -> [| |]
-    | SizeOfE(e')
-    | AlignOfE(e')
-    | UnOp(_,e',_)
-    | CastE(_,e')  -> Array.of_list (exp_to_node e')
-    | BinOp(_,e1,e2,_) -> Array.of_list ((exp_to_node e1) @ (exp_to_node e2))
+    | Const _ | Lval _  | SizeOf _ | SizeOfStr _  | AlignOf _  | AddrOf _
+      | AddrOfLabel _ | StartOf _  -> [| |]
+    | SizeOfE (e') | AlignOfE (e') | UnOp (_, e', _) | CastE (_, e') ->
+       Array.of_list (exp_to_node e')
+    | BinOp (_, e1, e2, _) ->
+       Array.of_list ((exp_to_node e1) @ (exp_to_node e2))
+    | Question (e1, e2, e3, _) ->
+       Array.of_list ((exp_to_node e1) @ (exp_to_node e2) @ (exp_to_node e3))
   in
   let instr_children i =
     if !exp_diff_level then begin
