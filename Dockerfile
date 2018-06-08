@@ -1,4 +1,4 @@
-FROM ubuntu:17.10
+FROM ubuntu:16.04
 MAINTAINER Chris Timperley "christimperley@googlemail.com"
 
 RUN apt-get update && \
@@ -19,7 +19,8 @@ WORKDIR /opt/genprog
 ADD Makefile Makefile
 ADD src src
 
-RUN mkdir bin && \
+RUN opam switch 4.05.0 && \
+    mkdir bin && \
     eval $(opam config env) && \
     make && \
     mv src/repair bin/genprog && \
