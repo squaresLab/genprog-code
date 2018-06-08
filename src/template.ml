@@ -153,13 +153,11 @@ class collectTemplates returnTemplates = object
 
     method vfunc fundec =
       let gettyp attrs =
-        let [Attr(_,[AStr(typ)])] =
-          filterAttributes "type" attrs in
-          match typ with
-            "stmt" -> HStmt
-          | "lval" -> HLval
-          | "exp" -> HExp
-          | _ -> failwith "Unexpected type value"
+        match filterAttributes "type" attrs with
+        | [Attr (_, [AStr ("stmt")])] -> HStmt
+        | [Attr (_, [AStr ("lval")])] -> HLval
+        | [Attr (_, [AStr ("exp")])] -> HExp
+        | _ -> failwith "Unexpected type value"
       in
       let _ = (* init *)
         template_name <- fundec.svar.vname;
