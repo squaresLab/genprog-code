@@ -165,12 +165,13 @@ class collectTemplates returnTemplates = object
         ptyp <- HStmt;
         pname = "";
       in
-      let position_info varinfo =
+      let find_positions varinfo =
         match varinfo.vtype with
         (* possible FIXME: check that this works *)
         | TNamed (tinfo, _) -> tinfo.tname = "position"
-        | _ -> false in
-      let positions = List.filter position_info fundec.slocals in
+        | _ -> false
+      in
+      let positions = List.filter find_positions fundec.slocals in
       let position =
         match positions with
         | [p] -> p
@@ -179,39 +180,36 @@ class collectTemplates returnTemplates = object
       pname <- position.vname;
       debug "pname: %s\n" pname;
       ptyp <- gettyp position.vattr;
+      let find_holes varinfo =
+        match varinfo.vtype with
+        | TNamed (tinfo, _) -> tinfo.tname = "hole"
+        | _ -> false
+      in
+      let holes = List.filter find_holes fundec.slocals in
 
-        let holes =
-          lfilt (fun varinfo ->
-            match varinfo.vtype with
-              TNamed(tinfo,_) -> tinfo.tname = "hole"
-            | _ -> false) fundec.slocals
+      let add_constraints varinfo =
+        let htyp = gettyp varinfo.vattr in
+        let get_constraints constraints attr =
+          match attr with
+          | Attr ("reference", [AStr (v)]) ->
+             ConstraintSet.add (Ref(v)) constraints
+          | Attr ("hastype", [AStr (v)]) ->
+             ConstraintSet.add(HasType(v)) constraints
+          | Attr ("local", []) -> ConstraintSet.add (IsLocal) constraints
+          | Attr ("global", []) -> ConstraintSet.add (IsGlobal) constraints
+          | Attr ("hasvar", [AStr (v)]) ->
+             ConstraintSet.add (HasVar (v)) constraints
+          (* we dealt with this one already when we got type, so ignore it *)
+          | Attr ("type", _) -> constraints
+          | _ -> failwith "Unexpected attribute"
         in
-          liter
-            (fun varinfo ->
-              let htyp = gettyp varinfo.vattr in
-              let constraints =
-                lfoldl
-                  (fun constraints attr ->
-                    match attr with
-                    | Attr("reference", [AStr(v)]) ->
-                      ConstraintSet.add (Ref(v)) constraints
-                    | Attr("hastype",[AStr(v)]) ->
-                      ConstraintSet.add(HasType(v)) constraints
-                    | Attr("local",[]) ->
-                      ConstraintSet.add (IsLocal) constraints
-                    | Attr("global",[]) ->
-                      ConstraintSet.add (IsGlobal) constraints
-                    | Attr("hasvar",[AStr(v)]) ->
-                      ConstraintSet.add (HasVar(v)) constraints
-                    | Attr("type",_) ->
-                      (* we dealt with this one already when we got type, so ignore it *)
-                      constraints
-                  ) ConstraintSet.empty varinfo.vattr
-              in
-                hole_info <- StringMap.add varinfo.vname
-                  ({htyp=htyp; constraints=constraints}) hole_info)
-            holes;
-          DoChildren
+        let constraints =
+          List.fold_left get_constraints ConstraintSet.empty varinfo.vattr in
+        let new_hole = {htyp = htyp; constraints = constraints} in
+        hole_info <- StringMap.add varinfo.vname new_hole hole_info
+      in
+      List.iter add_constraints holes;
+      DoChildren
 
 (* I kind of think it may be possible to do something like, all code b/f the
    instantiation position should match the surrounding context.  But that will
