@@ -1,22 +1,7 @@
-FROM ubuntu:16.04
-MAINTAINER Chris Timperley "christimperley@googlemail.com"
+FROM ocaml/opam
+MAINTAINER Jeremy Lacomis "jlacomis@cmu.edu
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      opam \
-      ocaml \
-      build-essential \
-      jq \
-      aspcud \
-      vim \
-      m4
-
-RUN useradd -s /sbin/nologin testuser
-
-USER testuser
-
-RUN echo "yes" >> /tmp/yes.txt && \
-    opam init -y < /tmp/yes.txt
+USER opam
 
 RUN opam switch 4.05.0 && \
     eval $(opam config env)
