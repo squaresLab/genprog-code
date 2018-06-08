@@ -768,7 +768,7 @@ let pad_args (f, f' : finfo * finfo) : unit =
       let to_pad =
         if !padding > 0 then f' else (padding := -(!padding); f)
       in
-        for i = 1 to !padding do
+        for _ = 1 to !padding do
           to_pad.args <- to_pad.args @ [fresh_var false]
         done
 
@@ -779,13 +779,13 @@ let pad_args2 (fi, tlr : finfo * tau list ref) : unit =
     if !padding == 0 then ()
     else
       if !padding > 0 then
-        for i = 1 to !padding do
+        for _ = 1 to !padding do
           tlr := !tlr @ [fresh_var false]
         done
       else
         begin
           padding := -(!padding);
-          for i = 1 to !padding do
+          for _ = 1 to !padding do
             fi.args <- fi.args @ [fresh_var false]
           done
         end
