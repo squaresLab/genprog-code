@@ -9,15 +9,19 @@ RUN apt-get update && \
       jq \
       aspcud \
       vim \
-      m4 && \
-    echo "yes" >> /tmp/yes.txt && \
-    opam init -y < /tmp/yes.txt && \
-    eval $(opam config env)
+      m4
+
+RUN useradd --system -s /sbin/nologin testuser
+
+USER testuser
+
+RUN echo "yes" >> /tmp/yes.txt && \
+    opam init -y < /tmp/yes.txt
 
 RUN opam switch 4.05.0 && \
     eval $(opam config env)
 
-RUN opam install -y ocamlfind cil
+RUN opam install -y cil
 
 RUN mkdir -p /opt/genprog
 WORKDIR /opt/genprog
