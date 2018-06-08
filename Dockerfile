@@ -8,8 +8,8 @@ RUN opam switch 4.05.0 && \
 
 RUN opam install -y cil
 
-RUN mkdir -p /opt/genprog
-WORKDIR /opt/genprog
+RUN mkdir -p /home/opam/genprog
+WORKDIR /home/opam/genprog
 ADD Makefile Makefile
 ADD src src
 
@@ -20,6 +20,6 @@ RUN mkdir bin && \
     mv src/distserver bin/distserver && \
     mv src/nhtserver bin/nhtserver
 
-ENV PATH "/opt/genprog/bin:${PATH}"
+ENV PATH "/home/opam/genprog/bin:${PATH}"
 
-VOLUME /opt/genprog
+VOLUME /home/opam/genprog
