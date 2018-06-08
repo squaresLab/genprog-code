@@ -234,34 +234,23 @@ and analyze_expr_as_lval (e : exp) : A.lvalue =
 and analyze_expr (e : exp ) : A.tau =
   let result =
     match e with
-        Const (CStr s) ->
-          if !model_strings then
-            A.address (A.make_lvalue
-                         false
-                         s
-                         (Some (makeVarinfo false s charConstPtrType)))
-          else A.bottom ()
-      | Const c -> A.bottom ()
-      | Lval l -> A.rvalue (analyze_lval l)
-      | SizeOf _ -> A.bottom ()
-      | SizeOfStr _ -> A.bottom ()
-      | AlignOf _ -> A.bottom ()
-      | UnOp (op, e, t) -> analyze_expr e
-      | BinOp (op, e, e', t) -> A.join (analyze_expr e) (analyze_expr e')
-      (*
+    | Const (CStr s) when !model_strings ->
+       let varinfo = makeVarinfo false s charConstPtrType in
+       let lvalue = A.make_lvalue false s (Some (varinfo)) in
+       A.address lvalue
+    | Lval l -> A.rvalue (analyze_lval l)
+    | Const _ | SizeOf _ | SizeOfStr _ | AlignOf _  | AlignOfE _ | SizeOfE _->
+       A.bottom ()
+    | UnOp (op, e, t) -> analyze_expr e
+    | BinOp (op, e, e', t) -> A.join (analyze_expr e) (analyze_expr e')
+    | CastE (t, e) -> analyze_expr e
+    | AddrOf l when (!fun_ptrs_as_funs && isFunctionType (typeOfLval l)) ->
+       A.rvalue (analyze_lval l)
+    | AddrOf l | StartOf l -> A.address (analyze_lval l)
+    (*
       | Question (_, e, e', _) -> A.join (analyze_expr e) (analyze_expr e')
-      *)
-      | CastE (t, e) -> analyze_expr e
-      | AddrOf l ->
-          if !fun_ptrs_as_funs && isFunctionType (typeOfLval l) then
-            A.rvalue (analyze_lval l)
-          else A.address (analyze_lval l)
-          (*
-      | AddrOfLabel _ -> failwith "not implemented yet" (* XXX *)
-      *)
-      | StartOf l -> A.address (analyze_lval l)
-      | AlignOfE _ -> A.bottom ()
-      | SizeOfE _ -> A.bottom ()
+     *)
+    | _ -> failwith "not implemented yet"
  in
   H.add expressions e result;
   result
