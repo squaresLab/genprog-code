@@ -12,6 +12,8 @@ RUN apt-get update && \
       m4 && \
     echo "yes" >> /tmp/yes.txt && \
     opam init -y < /tmp/yes.txt && \
+    opam switch 4.05.0 && \
+    eval $(opam config env) && \
     opam install -y cil
 
 RUN mkdir -p /opt/genprog
@@ -19,9 +21,7 @@ WORKDIR /opt/genprog
 ADD Makefile Makefile
 ADD src src
 
-RUN opam switch 4.05.0 && \
-    mkdir bin && \
-    eval $(opam config env) && \
+RUN mkdir bin && \
     make && \
     mv src/repair bin/genprog && \
     ln -s bin/genprog bin/repair && \
