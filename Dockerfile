@@ -1,4 +1,4 @@
-FROM ubuntu:17.04
+FROM ubuntu:17.10
 MAINTAINER Chris Timperley "christimperley@googlemail.com"
 
 RUN apt-get update && \
