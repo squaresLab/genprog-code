@@ -626,7 +626,8 @@ let genetic_algorithm_template
     @raise Max_evals if the maximum fitness evaluation count is set and then reached *)
 let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
   assert(!generations >= 0);
-  genetic_algorithm_template run_ga original incoming_pop
+  genetic_algorithm_template (run_ga ?start_gen:None ?num_gens:None)
+    original incoming_pop
 
 (** {b steady_state_ga } is parametric with respect to a number of choices,
     similar to {!genetic_algorithm}. Unlike the algorithm implemented in
