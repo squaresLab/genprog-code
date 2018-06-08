@@ -11,7 +11,7 @@ RUN apt-get update && \
       vim \
       m4
 
-RUN useradd --system -s /sbin/nologin testuser
+RUN useradd -s /sbin/nologin testuser
 
 USER testuser
 
