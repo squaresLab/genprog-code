@@ -343,6 +343,7 @@ let test_fitness generation (rep : ('a,'b) Rep.representation) =
           | "generation" -> test_fitness_generation rep generation, None
           | "variant" -> test_fitness_variant rep, None
           | "all" -> test_fitness_all_three rep generation
+          | _ -> failwith "Unknown sample strategy"
         else
           test_fitness_all rep, None
     in
