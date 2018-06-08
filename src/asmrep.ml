@@ -53,13 +53,12 @@ let label_regex = Str.regexp ".*:$"
 let dir_regex = Str.regexp "^[ \t]*\\..*[^:]$"
 let debug_label_regex = Str.regexp "^\\.L[^0-9].*:$"
 
-module OrderedChar =
-struct
-  type t = char
-  let compare = compare
-end
-
-module StringTrie = Trie.Make(OrderedChar)
+module StringTrie = Trie.Make(
+                        struct
+                          type t = char
+                          let compare = compare
+                        end
+                      )
 
 (**/**)
 
@@ -69,114 +68,115 @@ class asmRep = object (self : 'self_type)
 
   (**/**)
 
-  (* Mapping from file base index to lists of labels *)
+  (** Mapping from file base index to lists of labels *)
   val labels = ref IntMap.empty
-  (* Set of all labels in the code *)
+
+  (** Set of all labels in the code *)
   val all_labels = ref StringSet.empty
-  (* Map from file base id to the trie for the labels in that file *)
+
+  (** Map from file base id to the trie for the labels in that file *)
   val label_tries = ref IntMap.empty
-  (* Trie containing all labels in the code *)
+
+  (** Trie containing all labels in the code *)
   val all_labels_trie = ref StringTrie.empty
+
   method from_source filename =
-    super#from_source filename ;
-    let strip str =
-      if str = "" then
-        ""
-      else
-        String.sub str 0 ((String.length str) - 1)
+    super#from_source filename;
+    let strip = function
+      | "" -> ""
+      | str -> String.sub str 0 ((String.length str) - 1)
     in
-    labels := StringMap.fold (fun fname (start, stop) labels ->
-      IntMap.add
-        start
-        (lfoldl
-           (fun lines i ->
-             let found_string = (Str.string_match label_regex (!atoms.(i)) 0) in
-             if found_string then
-               (strip (Str.matched_string (!atoms.(i))))::lines
-             else
-               lines
-           ) [] (start -- (stop - 1))
-        ) labels
-    ) !ranges IntMap.empty ;
-    IntMap.iter (fun fnum flabels ->
-      liter (fun label ->
-        all_labels := (StringSet.add label !all_labels)
-      ) flabels
-    ) !labels ;
-    label_tries := IntMap.fold (fun fnum flabels label_tries ->
-      IntMap.add
-        fnum
-        (lfoldl
-           (fun label_trie label ->
-             StringTrie.add (chars_of_string label) true label_trie
-           ) StringTrie.empty flabels
-        ) label_tries
-    ) !labels IntMap.empty ;
-    all_labels_trie :=
-      StringSet.fold
-      (fun label all_labels_trie ->
-        StringTrie.add (chars_of_string label) true all_labels_trie
-      ) !all_labels StringTrie.empty ;
+    let get_lines lines i =
+      let found_string = Str.string_match label_regex (!atoms.(i)) 0 in
+      if found_string then
+        (strip (Str.matched_string (!atoms.(i)))) :: lines
+      else
+        lines
+    in
+    let collect_labels fname (start, stop) labels =
+      let lines = List.fold_left get_lines [] (start -- (stop - 1)) in
+      IntMap.add start lines labels
+    in
+    labels := StringMap.fold collect_labels !ranges IntMap.empty;
+    let add_flabels fnum flabels =
+      let add_label label = all_labels := StringSet.add label !all_labels in
+      List.iter add_label flabels
+    in
+    IntMap.iter add_flabels !labels ;
+    let add_to_trie trie elem =
+      StringTrie.add (chars_of_string elem) true trie in
+    let make_tries fnum flabels label_tries =
+      let make_trie = List.fold_left add_to_trie StringTrie.empty flabels in
+      IntMap.add fnum make_trie label_tries
+    in
+    label_tries := IntMap.fold make_tries !labels IntMap.empty;
+    all_labels_trie := StringSet.fold (fun elem trie -> add_to_trie trie elem)
+                         !all_labels StringTrie.empty;
 
   (* Removes directives and debugging labels from the fault space *)
   method reduce_search_space _ _ =
     let not_directive_or_debug_label (i, _) =
       let line = self#get i in
       ((not (Str.string_match dir_regex line 0)) &&
-          (not (Str.string_match debug_label_regex line 0)))
+         (not (Str.string_match debug_label_regex line 0)))
     in
-    let orig_len = llen !fault_localization in
-    fault_localization := lfilt not_directive_or_debug_label !fault_localization;
+    let orig_len = List.length !fault_localization in
+    fault_localization :=
+      List.filter not_directive_or_debug_label !fault_localization;
     let new_len = llen !fault_localization in
-    let percentage = (1.0 -. ((float_of_int new_len) /. (float_of_int orig_len))) *. 100.0 in
-    debug "asmRep: fault space reduced from %d lines to %d lines (%.2f%%)\n" orig_len new_len percentage;
+    let percentage =
+      (1.0 -. ((float_of_int new_len) /. (float_of_int orig_len))) *. 100.0 in
+    let debug_string = format_of_string
+      "asmRep: fault space reduced from %d lines to %d lines (%.2f%%)\n" in
+    debug debug_string orig_len new_len percentage;
 
   (* Removes labels and duplicate lines from the fix space *)
   method reduce_fix_space () =
     let orig_len = List.length !fix_localization in
     super#reduce_fix_space ();
     let not_label (i, _) =
-        (not (Str.string_match label_regex (self#get i) 0))
+      (not (Str.string_match label_regex (self#get i) 0))
     in
     fix_localization := lfilt not_label !fix_localization;
-      let new_len = List.length !fix_localization in
-      let percentage = (1.0 -. ((float_of_int new_len) /. (float_of_int orig_len))) *. 100.0 in
-      debug "asmRep: fix space reduced from %d lines to %d lines (%.2f%%)\n" orig_len new_len percentage;
+    let new_len = List.length !fix_localization in
+    let percentage =
+      (1.0 -. ((float_of_int new_len) /. (float_of_int orig_len))) *. 100.0 in
+    let debug_string = format_of_string
+      "asmRep: fix space reduced from %d lines to %d lines (%.2f%%)\n" in
+    debug debug_string orig_len new_len percentage;
 
   method available_mutations mut_id =
-    lfilt (fun (mutation,prob) ->
+    let delete_label_filter (mutation, _) =
       match mutation with
-        Delete_mut -> (* Don't delete labels *)
-          (not (Str.string_match label_regex (self#get mut_id) 0))
+      (* Don't delete labels *)
+      | Delete_mut -> (not (Str.string_match label_regex (self#get mut_id) 0))
       | _ -> true
-    ) (super#available_mutations mut_id)
+    in
+    lfilt delete_label_filter (super#available_mutations mut_id)
 
-  (* Do not allow appends if an instuction references a label that does not exist in this file *)
+  (* Do not allow appends if an instuction references a label that does not
+     exist in this file *)
   method private append_source_gen x =
     let contains_label line trie =
       let rec helper x =
         match x with
-          i::rest ->
-            let prefix = (StringTrie.contains_prefix_of (i::rest) trie) in
-            if (prefix == []) then
-              helper rest
-            else
-              begin
-                let prefix_len = llen prefix in
-                let next_char =
-                  try
-                    List.nth x prefix_len
-                  with _ ->
-                    '\n'
-                in
-                match next_char with
-                | '0' .. '9' | 'a' .. 'z' | 'A' .. 'Z' | '.' | '_' ->
-                   false
-                | _ ->
-                   true
-              end
-        | _ ->
-           false
+        | i :: rest ->
+           let prefix = (StringTrie.contains_prefix_of (i :: rest) trie) in
+           if (prefix == []) then
+             helper rest
+           else
+             begin
+               let prefix_len = llen prefix in
+               let next_char =
+                 try
+                   List.nth x prefix_len
+                 with _ -> '\n'
+               in
+               match next_char with
+               | '0' .. '9' | 'a' .. 'z' | 'A' .. 'Z' | '.' | '_' -> false
+               | _ -> true
+             end
+        | _ -> false
       in
       helper (chars_of_string line)
     in
@@ -194,9 +194,9 @@ class asmRep = object (self : 'self_type)
     let pending = ref !fix_localization in
     let rec gen () =
       match !pending with
-      | (i,w)::rest ->
-         pending := rest ;
-        if (can_append i) then Some(i,w) else gen ()
+      | (i, w) :: rest ->
+         pending := rest;
+         if (can_append i) then Some(i, w) else gen ()
       | [] -> None
     in
     gen
@@ -206,18 +206,21 @@ class asmRep = object (self : 'self_type)
     let is_label i = Str.string_match label_regex (self#get i) 0 in
     let file1 = self#base_for_atom_id x in
     let can_swap =
-      if is_label x then (* x is a label: can only swap within the same file *)
+      (* x is a label: can only swap within the same file *)
+      if is_label x then
         fun i -> (x <> i) && ((self#base_for_atom_id i) = file1)
-      else (* x is not a label: can swap anywhere except labels in other files *)
-        fun i -> (x <> i) && (not (is_label i) || ((self#base_for_atom_id i) = file1))
+      (* x is not a label: can swap anywhere except labels in other files *)
+      else
+        fun i -> (x <> i) &&
+                   (not (is_label i) || ((self#base_for_atom_id i) = file1))
     in
     let pending = ref !fault_localization in
     let rec gen () =
       match !pending with
-      | (i,w)::rest ->
-        pending := rest ;
-        if (can_swap i) then Some(i,w) else gen ()
+      | (i, w) :: rest ->
+        pending := rest;
+        if (can_swap i) then Some (i, w) else gen ()
       | [] -> None
     in
-      gen
+    gen
 end
