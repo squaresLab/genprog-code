@@ -3072,9 +3072,16 @@ class patchCilRep = object (self : 'self_type)
                 let _,atom = self#get_stmt id in
                   hadd stmt_replace hole atom
             | HExp ->
-              let exp_id = get_opt idopt in
-              let Exp(atom) = self#get_subatom ~fault_src:false id exp_id in
-                hadd exp_replace hole atom
+               begin
+                 let exp_id = get_opt idopt in
+                 let exp = self#get_subatom ~fault_src:false id exp_id in
+                 let atom =
+                   match exp with
+                   | Exp (atom) -> atom
+                   | _ -> failwith "Could not find atom"
+                 in
+                 hadd exp_replace hole atom
+               end
             | HLval ->
               let atom = IntMap.find id !varmap in
                 hadd lval_replace hole (Var(atom),NoOffset)
