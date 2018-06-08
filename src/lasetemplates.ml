@@ -3732,23 +3732,28 @@ let template10 get_fun_by_name fd =
     ) [] all_keys in
 
     if (llen retval1) > 1 then begin
-      let (_,s1,_,_,_) :: (_,s2,_,_,_) :: _ = retval1 in
-      (* check if the two statements are overwrapped. *)
-      if overwrapped_stmts s1 s2 then IntMap.empty
-      else begin
-        lfoldl(fun map(parstmt,s1,args,macro_value,loc)->
-          (* checking if the function definition exists. *)
-          try
-            let fun_varinfo = get_fun_by_name "do_inheritance_check_on_method" in
-            let fun_to_insert = mk_lval fun_varinfo (* Lval(Var(fun_decl),NoOffset) *) in
-            let call = mkStmt (Instr([Call(None,fun_to_insert,args,loc)])) in
-              IntMap.add s1.sid (prepend_before_stmt s1 [call]) map
-          with
-          | Not_found -> IntMap.empty
-        ) (IntMap.empty) retval1
-      end
+        let s1, s2 =
+          match retval1 with
+          | (_, s1', _, _, _) :: (_, s2', _, _, _) :: _ -> s1', s2'
+          | _ -> failwith "Bad retval"
+        in
+        (* check if the two statements are overwrapped. *)
+        if overwrapped_stmts s1 s2 then IntMap.empty
+        else begin
+            lfoldl(fun map(parstmt,s1,args,macro_value,loc)->
+                (* checking if the function definition exists. *)
+                try
+                  let fun_varinfo = get_fun_by_name "do_inheritance_check_on_method" in
+                  let fun_to_insert = mk_lval fun_varinfo (* Lval(Var(fun_decl),NoOffset) *) in
+                  let call = mkStmt (Instr([Call(None,fun_to_insert,args,loc)])) in
+                  IntMap.add s1.sid (prepend_before_stmt s1 [call]) map
+                with
+                | Not_found -> IntMap.empty
+              ) (IntMap.empty) retval1
+          end
+      end else IntMap.empty
+
     end else IntMap.empty
-  end else IntMap.empty
 
 let templates
 (*    (Cil.fundec -> Cil.stmt -> (string -> Cil.varinfo) -> Cil.stmt) StringMap.t*)
