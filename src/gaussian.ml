@@ -90,7 +90,7 @@ class virtual binRep = object (self : 'self_type)
       implementations as necessary.  note that the order here matters because
       OCaml inheritence is syntactic, not a semantic, relationship *)
   inherit [string list, string list] faultlocRepresentation as faultlocSuper
-  inherit simpleRep as super
+  inherit simpleRep
 
   method private virtual mem_mapping :
       string -> string -> (int, int) Hashtbl.t
@@ -119,7 +119,7 @@ class virtual binRep = object (self : 'self_type)
     let neg_exe = coverage_exename^".neg" in
       ignore(system ("cp "^coverage_exename^" "^coverage_exename^".pos"));
       ignore(system ("cp "^coverage_exename^" "^coverage_exename^".neg"));
-      for i = 1 to !sample_runs do (* run the positive tests *)
+      for _ = 1 to !sample_runs do (* run the positive tests *)
         for i = 1 to !pos_tests do
           ignore(self#internal_test_case pos_exe
                    coverage_sourcename (Positive i))
