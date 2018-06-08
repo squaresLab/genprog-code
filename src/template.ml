@@ -165,15 +165,20 @@ class collectTemplates returnTemplates = object
         ptyp <- HStmt;
         pname = "";
       in
-      let [position] =
-        lfilt (fun varinfo ->
-          match varinfo.vtype with
-            (* possible FIXME: check that this works *)
-            TNamed(tinfo,_) -> tinfo.tname = "position"
-          | _ -> false) fundec.slocals in
-        pname <- position.vname;
-        debug "pname: %s\n" pname;
-        ptyp <- gettyp position.vattr;
+      let position_info varinfo =
+        match varinfo.vtype with
+        (* possible FIXME: check that this works *)
+        | TNamed (tinfo, _) -> tinfo.tname = "position"
+        | _ -> false in
+      let positions = List.filter position_info fundec.slocals in
+      let position =
+        match positions with
+        | [p] -> p
+        | _ -> failwith "Unexpected position value"
+      in
+      pname <- position.vname;
+      debug "pname: %s\n" pname;
+      ptyp <- gettyp position.vattr;
 
         let holes =
           lfilt (fun varinfo ->
