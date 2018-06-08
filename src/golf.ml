@@ -486,7 +486,7 @@ let global_tau = get_global
 
 
 (** Get_global for lvalues *)
-let global_lvalue lv = get_global lv.contents
+let global_lvalue (lv : lvalue) = get_global lv.contents
 
 
 
