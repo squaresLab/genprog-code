@@ -297,43 +297,32 @@ let analyze_instr (i : instr ) : unit =
             end
     | Asm _ -> ()
 
-let rec analyze_stmt (s : stmt ) : unit =
+let rec analyze_stmt (s : stmt) : unit =
   match s.skind with
-      Instr il -> List.iter analyze_instr il
-    | Return (eo, l) ->
-        begin
-          match eo with
-              Some e ->
-                begin
-                  match !current_ret with
-                      Some ret -> A.return ret (analyze_expr e)
-                    | None -> raise Bad_return
-                end
-            | None -> ()
-        end
-    | Goto (s', l) -> () (* analyze_stmt(!s') *)
-    (*
-    | ComputedGoto (e, l) -> ()
-    *)
-    | If (e, b, b', l) ->
-        (* ignore the expression e; expressions can't be side-effecting *)
-        analyze_block b;
-        analyze_block b'
-    | Switch (e, b, sl, l) ->
-        analyze_block b;
-        List.iter analyze_stmt sl
-    | Loop (b, l, _, _) -> analyze_block b
-    | Block b -> analyze_block b
-    | TryFinally (b, h, _) ->
-        analyze_block b;
-        analyze_block h
-    | TryExcept (b, (il, _), h, _) ->
-        analyze_block b;
-        List.iter analyze_instr il;
-        analyze_block h
-    | Break l -> ()
-    | Continue l -> ()
-
+  | Instr il -> List.iter analyze_instr il
+  | Return (Some (e), _) ->
+     begin
+       match !current_ret with
+       | Some ret -> A.return ret (analyze_expr e)
+       | None -> raise Bad_return
+     end
+  | Return _ | Goto _ | ComputedGoto _ | Break _ | Continue _ -> ()
+  | If (_, b, b', _) ->
+     (* ignore the expression; expressions can't be side-effecting *)
+     analyze_block b;
+     analyze_block b'
+  | Switch (_, b, sl, _) ->
+     analyze_block b;
+     List.iter analyze_stmt sl
+  | Loop (b, _, _, _) -> analyze_block b
+  | Block b -> analyze_block b
+  | TryFinally (b, h, _) ->
+     analyze_block b;
+     analyze_block h
+  | TryExcept (b, (il, _), h, _) ->
+     analyze_block b;
+     List.iter analyze_instr il;
+     analyze_block h
 
 and analyze_block (b : block ) : unit =
   List.iter analyze_stmt b.bstmts
