@@ -8,8 +8,12 @@ RUN opam install -y cil
 
 RUN mkdir -p /home/opam/genprog
 WORKDIR /home/opam/genprog
-ADD Makefile Makefile
-ADD src src
+COPY Makefile Makefile
+COPY src src
+
+USER root
+RUN chown opam Makefile src
+USER opam
 
 RUN eval $(opam config env) && \
     mkdir bin && \
