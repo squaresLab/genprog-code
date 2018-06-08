@@ -175,6 +175,7 @@ let () =
 (** thrown if the number of fitness evaluations conducted so far exceeds
     [max_evals], a command-line parameter.  This feature is off by default *)
 exception Maximum_evals of int
+
 (** thrown by some search strategies when a repair is found *)
 exception Found_repair of string
 
