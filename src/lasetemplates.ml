@@ -1258,11 +1258,15 @@ class template04Pattern02 retval2 = object
            (* see if the expression includes the binary operation. *)
            match !loop_if_list with
            | (lpSt, ifSt) :: rest when hmem lp_if_ht lpSt ->
-              let foundIfSt  = hfind lp_if_ht lpSt in
-              let If(exp,bl1,bl2,loc) = foundIfSt.skind in
+              begin
+                let foundIfSt  = hfind lp_if_ht lpSt in
+                match foundIfSt.skind with
+                | If(exp, bl1, bl2, loc) ->
               (* foundIfSt includes an if statement whose Then block contains a Call. *)
-              let retval = visitBlkGetBool chkThenBlockIfStmtVisitor bl1 in
-              if retval then retval2 := (foundIfSt, exp, loc) :: !retval2
+                   let retval = visitBlkGetBool chkThenBlockIfStmtVisitor bl1 in
+                   if retval then retval2 := (foundIfSt, exp, loc) :: !retval2
+                | _ -> ()
+              end
            | _ -> ()
          end
       | _ -> ()
