@@ -12,9 +12,12 @@ RUN apt-get update && \
       m4 && \
     echo "yes" >> /tmp/yes.txt && \
     opam init -y < /tmp/yes.txt && \
-    opam switch 4.05.0 && \
-    eval $(opam config env) && \
-    opam install -y cil
+    eval $(opam config env)
+
+RUN opam switch 4.05.0 && \
+    eval $(opam config env)
+
+RUN opam install -y ocamlfind cil
 
 RUN mkdir -p /opt/genprog
 WORKDIR /opt/genprog
