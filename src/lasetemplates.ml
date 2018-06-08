@@ -919,35 +919,37 @@ end
 
 let template03 get_fun_by_name fd =
   if not (fun_exists get_fun_by_name "__builtin_strncpy") then IntMap.empty
-  else begin
-  let old_directive_style = !Cil.lineDirectiveStyle in
-    Cil.lineDirectiveStyle := None ;
-    let retval3 = visitFnGetList (new template03Visitor) fd in
-      List.fold_left
-        (fun acc ((strcpy_s, strcpy_args, strcpy_loc), (strlen,loc)) ->
-    (* first, strncpy *)
-    let dest_exp :: src_exp :: _ = strcpy_args in
-    let subtraction_exp = BinOp(MinusA,SizeOfE(dest_exp),one,intType) in
-    let strncpy_lval = mk_lval (get_fun_by_name "__builtin_strncpy") in
-
-    let arguments = [dest_exp;src_exp;subtraction_exp] in
-    let strncpy_stmt =
-      mkStmt (Instr([Call(None,strncpy_lval,arguments,strcpy_loc)]))
-    in
-    let sizeof_exp = BinOp(MinusA,SizeOfE(dest_exp),one,intType) in
-    let sizeof_stmt =
-      match strlen.skind with
-        Instr[(Call(Some(retval),presumed_strlen,args,loc))] -> begin
-          let new_inst = Set(retval,sizeof_exp,loc) in
-            { strlen with skind = Instr[new_inst] }
-        end
-      | _ -> abort "major fail"
-    in
-      Cil.lineDirectiveStyle := old_directive_style;
-      let acc = IntMap.add strcpy_s.sid strncpy_stmt acc in
-      IntMap.add strlen.sid sizeof_stmt acc)
-        (IntMap.empty) retval3
-  end
+  else
+    begin
+      let old_directive_style = !Cil.lineDirectiveStyle in
+      Cil.lineDirectiveStyle := None;
+      let retval3 = visitFnGetList (new template03Visitor) fd in
+      let accumulate acc ((strcpy_s, strcpy_args, strcpy_loc), (strlen, loc)) =
+        let dest_exp, src_exp =
+          match strcpy_args with
+          | d_exp :: s_exp :: _ -> d_exp, s_exp
+          | _ -> failwith "Failed to get expressions"
+        in
+        let subtraction_exp =
+          BinOp (MinusA, SizeOfE (dest_exp), one, intType) in
+        let strncpy_lval = mk_lval (get_fun_by_name "__builtin_strncpy") in
+        let arguments = [dest_exp; src_exp; subtraction_exp] in
+        let strncpy_stmt =
+          mkStmt (Instr ([Call (None, strncpy_lval, arguments, strcpy_loc)])) in
+        let sizeof_exp = BinOp (MinusA, SizeOfE (dest_exp), one, intType) in
+        let sizeof_stmt =
+          match strlen.skind with
+          | Instr [(Call (Some (retval), presumed_strlen, args, loc))] ->
+             let new_inst = Set (retval, sizeof_exp, loc) in
+             {strlen with skind = Instr [new_inst]}
+          | _ -> abort "major fail"
+        in
+        Cil.lineDirectiveStyle := old_directive_style;
+        let acc = IntMap.add strcpy_s.sid strncpy_stmt acc in
+        IntMap.add strlen.sid sizeof_stmt acc
+      in
+      List.fold_left accumulate IntMap.empty retval3
+    end
 (*
  * Myoungkyu Song     <mksong1117@utexas.edu>
  *
