@@ -313,7 +313,7 @@ let distributed_client rep incoming_pop =
   fullsend server_socket (Printf.sprintf "%d" !my_port);
 
   (* Populates the client_tbl with the keys being the computer number and the value being their sockaddr *)
-  for i=1 to !num_comps do
+  for _ = 1 to !num_comps do
     let strlist = Str.split (Str.regexp " ") (fullread server_socket) in
     let client_num = my_int_of_string (List.hd strlist) in
     let addr_inet =

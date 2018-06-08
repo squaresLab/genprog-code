@@ -483,7 +483,7 @@ and ngsa_ii_internal
               let _ =
                 debug "multiopt: including %d copies of original\n" wanted
               in
-                for i = 1 to wanted do
+                for _ = 1 to wanted do
                   next_generation := (original#copy ()) :: !next_generation
                 done ;
                 finished := true
