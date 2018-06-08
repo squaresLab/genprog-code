@@ -102,7 +102,7 @@ class asmRep = object (self : 'self_type)
       let add_label label = all_labels := StringSet.add label !all_labels in
       List.iter add_label flabels
     in
-    IntMap.iter add_flabels !labels ;
+    IntMap.iter add_flabels !labels;
     let add_to_trie trie elem =
       StringTrie.add (chars_of_string elem) true trie in
     let make_tries fnum flabels label_tries =
