@@ -2351,7 +2351,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     in
     let set_fault wp = fault_localization := wp in
     let set_fix lst = fix_localization := lst in
-    let printht ht = Hashtbl.iter (fun atom (pos,neg) -> debug "%d <%f,%f>\n" atom pos neg) ht in
 
     (* sanity/legality checking on the command line options *)
     let _ =
