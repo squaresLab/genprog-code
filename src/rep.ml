@@ -127,13 +127,13 @@ type mutation = mutation_id * float
     mutate themselves using the builtin mutation operators/functions or using
     user-defined templates.  Representations may be serialized or deserialized
     and constructed by setting a genome.  Representations may be of variable
-    length or not (which influences crossover).  *)
-class type ['gene,'code] representation = object('self_type)
-  (** ['gene] (or ['a] in the ocamldoc) is the type of the genes that comprise
-      an individual's genome, such as an edit operation or a C AST node.
-      ['code] (or ['b] in the ocamldoc) is the type of the manipulable source
-      nodes, such as a [cilRep_atom] *)
+    length or not (which influences crossover).
 
+    ['gene] (or ['a] in the ocamldoc) is the type of the genes that comprise
+    an individual's genome, such as an edit operation or a C AST node.
+    ['code] (or ['b] in the ocamldoc) is the type of the manipulable source
+    nodes, such as a [cilRep_atom] *)
+class type ['gene,'code] representation = object('self_type)
   (** whether individuals of this representation have genomes of varying length.
       This influences one-point crossover *)
   method variable_length : bool
