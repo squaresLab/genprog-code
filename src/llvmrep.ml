@@ -131,12 +131,7 @@ class llvmRep = object (self : 'self_type)
     (* read from tmp_from *)
     self#from_source tmp_to;
     cleanup();
-    if return then
-      ()
-    else begin
-      failwith "llvmRep: `"^cmd^"' failed";
-      ()
-    end
+    if return then () else failwith ("llvmRep: `" ^ cmd ^ "' failed")
 
   method max_atom () =
     let tmp_from = Filename.temp_file "llvmRepFrom" ".ll" in
@@ -154,7 +149,8 @@ class llvmRep = object (self : 'self_type)
       | _ -> false in
     let result =
       if return then (my_int_of_string (file_to_string tmp_to))
-      else begin failwith "llvmRep: `"^cmd^"' failed"; 0 end in
+      else failwith ("llvmRep: `" ^ cmd ^ "' failed")
+    in
     cleanup();
       result
 
@@ -179,9 +175,9 @@ class llvmRep = object (self : 'self_type)
     let cmd = "cat "^tmp_from^"|"^llvm_mutate^" -t >"^coverage_sourcename in
     self#to_source tmp_from;
     match (system cmd) with
+    | Unix.WEXITED(0) when Sys.file_exists tmp_from -> Sys.remove tmp_from
     | Unix.WEXITED(0) -> ()
-    | _ -> failwith "llvmRep: fault localization instrumentation failed";
-    if Sys.file_exists tmp_from then Sys.remove tmp_from;
+    | _ -> failwith "llvmRep: fault localization instrumentation failed"
 
   method debug_info () = debug "llvmRep: lines = 1--%d\n" (self#max_atom ())
 
