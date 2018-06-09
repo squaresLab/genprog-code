@@ -343,12 +343,12 @@ let rec count_map f l ctr =
   match l with
   | [] -> []
   | [x] -> [f x]
-  | [x;y] ->
+  | [x; y] ->
           (* order matters! *)
           let x' = f x in
           let y' = f y in
           [x'; y']
-  | [x;y;z] ->
+  | [x; y; z] ->
           let x' = f x in
           let y' = f y in
           let z' = f z in
@@ -358,9 +358,9 @@ let rec count_map f l ctr =
           let y' = f y in
           let z' = f z in
           let w' = f w in
-          x' :: y' :: z' :: w' ::
-      (if ctr > 500 then list_array_map f tl
-       else count_map f tl (ctr + 1))
+          let rest = if ctr > 500 then list_array_map f tl
+                     else count_map f tl (ctr + 1) in
+          x' :: y' :: z' :: w' :: rest
 
 let list_map f l = count_map f l 0
 
@@ -370,24 +370,21 @@ let die s =
   Printf.printf "*******\nAssertion failed: %s\n*******\n" s;
   assert false
 
-let fresh_appsite : (unit -> int) =
+let fresh_appsite () =
   let appsite_index = ref 0 in
-    fun () ->
-      incr appsite_index;
-      !appsite_index
+  incr appsite_index;
+  !appsite_index
 
 (** Generate a unique integer. *)
-let fresh_index : (unit -> int) =
+let fresh_index () =
   let counter = ref 0 in
-    fun () ->
-      incr counter;
-      !counter
+  incr counter;
+  !counter
 
-let fresh_stamp : (unit -> int) =
+let fresh_stamp () =
   let stamp = ref 0 in
-    fun () ->
-      incr stamp;
-      !stamp
+  incr stamp;
+  !stamp
 
 (** Return a unique integer representation of a tau *)
 let get_stamp (t : tau) : int =
