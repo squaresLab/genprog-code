@@ -566,7 +566,7 @@ let string_of_tau (t : tau) : string =
          | Fun f ->
             assert (pair_or_var f.ret);
             let rec string_of_args = function
-                h :: [] ->
+              | h :: [] ->
                  assert (pair_or_var h);
                  s := !s ^ string_of_tau' h
               | h :: t ->
@@ -614,7 +614,7 @@ let print_path (p : lblinfo path) : unit =
 (** Print a list of tau elements, comma separated *)
 let print_tau_list (l : tau list) : unit =
   let rec print_t_strings = function
-      h :: [] -> print_endline h
+    | h :: [] -> print_endline h
     | h :: t ->
         print_string h;
         print_string ", ";
@@ -866,7 +866,7 @@ and unify_ref (ri,ri' : rinfo * rinfo) : unit =
   add_constraint (Unification (ri.points_to, ri'.points_to))
 and unify_fun (fi, fi' : finfo * finfo) : unit =
   let rec union_args  = function
-      _, [] -> false
+    | _, [] -> false
     | [], _ -> true
     | h :: t, h' :: t' ->
         add_constraint (Unification (h, h'));
@@ -1567,8 +1567,8 @@ let alias_query (b : bool) (lvl : lvalue list) : int * int =
   let ptsets =
     list_map
       (function
-           Some l -> collect_ptsets l
-         | None -> C.empty)
+       | Some l -> collect_ptsets l
+       | None -> C.empty)
       lbls in
   let record_alias s lo s' lo' =
     match lo, lo' with
