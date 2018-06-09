@@ -58,20 +58,20 @@ module Q = Queue
 
 (** Subtyping kinds *)
 type polarity =
-    Pos
+  | Pos
   | Neg
   | Sub
 
 (** Path kinds, for CFL reachability *)
 type pkind =
-    Positive
+  | Positive
   | Negative
   | Match
   | Seed
 
 (** Context kinds -- open or closed *)
 type context =
-    Open
+  | Open
   | Closed
 
 (* A configuration is a context (open or closed) coupled with a pair
@@ -389,38 +389,36 @@ let fresh_stamp () =
 (** Return a unique integer representation of a tau *)
 let get_stamp (t : tau) : int =
   match find t with
-      Var v -> v.v_stamp
-    | Ref r -> r.r_stamp
-    | Pair p -> p.p_stamp
-    | Fun f -> f.f_stamp
+  | Var v -> v.v_stamp
+  | Ref r -> r.r_stamp
+  | Pair p -> p.p_stamp
+  | Fun f -> f.f_stamp
 
 (** Negate a polarity. *)
 let negate (p : polarity) : polarity =
   match p with
-      Pos -> Neg
-    | Neg -> Pos
-    | Sub -> die "negate"
+  | Pos -> Neg
+  | Neg -> Pos
+  | Sub -> die "negate"
 
 (** Consistency checks for inferred types *)
 let pair_or_var (t : tau) =
   match find t with
-      Pair _ -> true
-    | Var _ -> true
-    | _ -> false
+  | Pair _ -> true
+  | Var _ -> true
+  | _ -> false
 
 let ref_or_var (t : tau) =
   match find t with
-      Ref _ -> true
-    | Var _ -> true
-    | _ -> false
+  | Ref _ -> true
+  | Var _ -> true
+  | _ -> false
 
 let fun_or_var (t : tau) =
   match find t with
-      Fun _ -> true
-    | Var _ -> true
-    |  _ -> false
-
-
+  | Fun _ -> true
+  | Var _ -> true
+  |  _ -> false
 
 (** Apply [f] structurally down [t]. Guaranteed to terminate, even if [t]
     is recursive *)
@@ -432,14 +430,14 @@ let iter_tau f t =
         f t;
         H.add visited (get_stamp t) t;
         match U.deref t with
-            Pair p ->
-              iter_tau' p.ptr;
-              iter_tau' p.lam
-          | Fun f ->
-              List.iter iter_tau' (f.args);
-              iter_tau' f.ret
-          | Ref r -> iter_tau' r.points_to
-          | _ -> ()
+        | Pair p ->
+           iter_tau' p.ptr;
+           iter_tau' p.lam
+        | Fun f ->
+           List.iter iter_tau' (f.args);
+           iter_tau' f.ret
+        | Ref r -> iter_tau' r.points_to
+        | _ -> ()
       end
   in
     iter_tau' t
@@ -448,9 +446,9 @@ let iter_tau f t =
 let get_bounds (p :polarity ) (upper : bool) (l : label) : lblinfo boundset =
   let li = find l in
     match p with
-        Pos -> if upper then li.p_ubounds else li.p_lbounds
-      | Neg -> if upper then li.n_ubounds else li.n_lbounds
-      | Sub -> if upper then li.m_ubounds else li.m_lbounds
+    | Pos -> if upper then li.p_ubounds else li.p_lbounds
+    | Neg -> if upper then li.n_ubounds else li.n_lbounds
+    | Sub -> if upper then li.m_ubounds else li.m_lbounds
 
 let equal_tau (t : tau) (t' : tau) =
   get_stamp t = get_stamp t'
@@ -461,10 +459,10 @@ let get_label_stamp (l : label) : int =
 (** Return true if [t] is global (treated monomorphically) *)
 let get_global (t : tau) : bool =
   match find t with
-      Var v -> v.v_global
-    | Ref r -> r.r_global
-    | Pair p -> p.p_global
-    | Fun f -> f.f_global
+  | Var v -> v.v_global
+  | Ref r -> r.r_global
+  | Pair p -> p.p_global
+  | Fun f -> f.f_global
 
 let is_ret_label l = (find l).l_ret  || (find l).l_global (* todo - check *)
 
@@ -495,16 +493,16 @@ let global_lvalue (lv : lvalue) = get_global lv.contents
 
 let string_of_configuration (c, i, i') =
   let context = match c with
-      Open -> "O"
+    | Open -> "O"
     | Closed -> "C"
   in
     Printf.sprintf "(%s,%d,%d)" context i i'
 
 let string_of_polarity p =
   match p with
-      Pos -> "+"
-    | Neg -> "-"
-    | Sub -> "M"
+  | Pos -> "+"
+  | Neg -> "-"
+  | Sub -> "M"
 
 (** Convert a label to a string, short representation *)
 let string_of_label (l : label) : string =
@@ -514,18 +512,18 @@ let string_of_label (l : label) : string =
     according to uref equality *)
 let rec assoc_list_mem (e : tau) (l : association list) =
   match l with
-    | [] -> None
-    | (h, s, so) :: t ->
-        if U.equal (h,e) then Some (s, so) else assoc_list_mem e t
+  | [] -> None
+  | (h, s, so) :: t ->
+     if U.equal (h,e) then Some (s, so) else assoc_list_mem e t
 
 (** Given a tau, create a unique recursive variable name. This should always
     return the same name for a given tau *)
 let fresh_recvar_name (t : tau) : string =
   match find t with
-      Pair p -> "rvp" ^ string_of_int p.p_stamp
-    | Ref r -> "rvr" ^ string_of_int r.r_stamp
-    | Fun f -> "rvf" ^ string_of_int f.f_stamp
-    | _ -> die "fresh_recvar_name"
+  | Pair p -> "rvp" ^ string_of_int p.p_stamp
+  | Ref r -> "rvr" ^ string_of_int r.r_stamp
+  | Fun f -> "rvf" ^ string_of_int f.f_stamp
+  | _ -> die "fresh_recvar_name"
 
 
 (** Return a string representation of a tau, using association lists. *)
@@ -533,64 +531,64 @@ let string_of_tau (t : tau) : string =
   let tau_map : association list ref = ref [] in
   let rec string_of_tau' t =
     match assoc_list_mem t !tau_map with
-        Some (s, so) -> (* recursive type. see if a var name has been set *)
-          begin
-            match !so with
-                None ->
-                  let rv = fresh_recvar_name t in
-                    s := "u " ^ rv ^ "." ^ !s;
-                    so := Some rv;
-                    rv
-              | Some rv -> rv
-          end
-      | None -> (* type's not recursive. Add it to the assoc list and cont. *)
-          let s = ref ""
-          and so : string option ref = ref None in
-            tau_map := (t, s, so) :: !tau_map;
-            begin
-              match find t with
-                  Var v -> s := v.v_name;
-                | Pair p ->
-                    assert (ref_or_var p.ptr);
-                    assert (fun_or_var p.lam);
-                    s := "{";
-                    s := !s ^ string_of_tau' p.ptr;
-                    s := !s ^ ",";
-                    s := !s ^ string_of_tau' p.lam;
-                    s := !s ^"}"
-                | Ref r ->
-                    assert (pair_or_var r.points_to);
-                    s := "ref(|";
-                    s := !s ^ string_of_label r.rl;
-                    s := !s ^ "|,";
-                    s := !s ^ string_of_tau' r.points_to;
-                    s := !s ^ ")"
-                | Fun f ->
-                    assert (pair_or_var f.ret);
-                    let rec string_of_args = function
-                        h :: [] ->
-                          assert (pair_or_var h);
-                          s := !s ^ string_of_tau' h
-                      | h :: t ->
-                          assert (pair_or_var h);
-                          s := !s ^ string_of_tau' h ^ ",";
-                          string_of_args t
-                      | [] -> ()
-                    in
-                      s := "fun(|";
-                      s := !s ^ string_of_label f.fl;
-                      s := !s ^ "|,";
-                      s := !s ^ "<";
-                      if List.length f.args > 0 then string_of_args f.args
-                      else s := !s ^ "void";
-                      s := !s ^">,";
-                      s := !s ^ string_of_tau' f.ret;
-                      s := !s ^ ")"
-            end;
-            tau_map := List.tl !tau_map;
-            !s
+    | Some (s, so) -> (* recursive type. see if a var name has been set *)
+       begin
+         match !so with
+         | None ->
+            let rv = fresh_recvar_name t in
+            s := "u " ^ rv ^ "." ^ !s;
+            so := Some rv;
+            rv
+         | Some rv -> rv
+       end
+    | None -> (* type's not recursive. Add it to the assoc list and cont. *)
+       let s = ref ""
+       and so : string option ref = ref None in
+       tau_map := (t, s, so) :: !tau_map;
+       begin
+         match find t with
+         | Var v -> s := v.v_name;
+         | Pair p ->
+            assert (ref_or_var p.ptr);
+            assert (fun_or_var p.lam);
+            s := "{";
+            s := !s ^ string_of_tau' p.ptr;
+            s := !s ^ ",";
+            s := !s ^ string_of_tau' p.lam;
+            s := !s ^"}"
+         | Ref r ->
+            assert (pair_or_var r.points_to);
+            s := "ref(|";
+            s := !s ^ string_of_label r.rl;
+            s := !s ^ "|,";
+            s := !s ^ string_of_tau' r.points_to;
+            s := !s ^ ")"
+         | Fun f ->
+            assert (pair_or_var f.ret);
+            let rec string_of_args = function
+                h :: [] ->
+                 assert (pair_or_var h);
+                 s := !s ^ string_of_tau' h
+              | h :: t ->
+                 assert (pair_or_var h);
+                 s := !s ^ string_of_tau' h ^ ",";
+                 string_of_args t
+              | [] -> ()
+            in
+            s := "fun(|";
+            s := !s ^ string_of_label f.fl;
+            s := !s ^ "|,";
+            s := !s ^ "<";
+            if List.length f.args > 0 then string_of_args f.args
+            else s := !s ^ "void";
+            s := !s ^">,";
+            s := !s ^ string_of_tau' f.ret;
+            s := !s ^ ")"
+       end;
+       tau_map := List.tl !tau_map;
+       !s
   in
-    string_of_tau' t
+  string_of_tau' t
 
 (** Convert an lvalue to a string *)
 let string_of_lvalue (lv : lvalue) : string =
@@ -601,7 +599,7 @@ let string_of_lvalue (lv : lvalue) : string =
 
 let print_path (p : lblinfo path) : unit =
   let string_of_pkind = function
-      Positive -> "p"
+    | Positive -> "p"
     | Negative -> "n"
     | Match -> "m"
     | Seed -> "s"
@@ -627,14 +625,14 @@ let print_tau_list (l : tau list) : unit =
 
 let print_constraint (c : tconstraint) =
   match c with
-      Unification (t, t') ->
-        let lhs = string_of_tau t
-        and rhs = string_of_tau t' in
-          Printf.printf "%s == %s\n" lhs rhs
-    | Leq (t, (i, p), t') ->
-        let lhs = string_of_tau t
-        and rhs = string_of_tau t' in
-          Printf.printf "%s <={%d,%s} %s\n" lhs i (string_of_polarity p) rhs
+  | Unification (t, t') ->
+     let lhs = string_of_tau t
+     and rhs = string_of_tau t' in
+     Printf.printf "%s == %s\n" lhs rhs
+  | Leq (t, (i, p), t') ->
+     let lhs = string_of_tau t
+     and rhs = string_of_tau t' in
+     Printf.printf "%s <={%d,%s} %s\n" lhs i (string_of_polarity p) rhs
 
 (***********************************************************************)
 (*                                                                     *)
@@ -649,8 +647,8 @@ let make_lval (lbl, t : label * tau) : lvalue =
 let make_label_int (is_global : bool) (name :string) (vio : Cil.varinfo option) : label =
   let locc =
     match vio with
-        Some vi -> C.add (fresh_index (), name, vi) C.empty
-      | None -> C.empty
+    | Some vi -> C.add (fresh_index (), name, vi) C.empty
+    | None -> C.empty
   in
     U.uref {
       l_name = name;
@@ -739,22 +737,22 @@ let make_pair (p,f : tau * tau) : tau =
     argement of the constructor. *)
 let copy_toplevel (t : tau) : tau =
   match find t with
-      Pair _ -> make_pair (fresh_var_i false, fresh_var_i false)
-    | Ref  _ -> make_ref (fresh_label false, fresh_var_i false)
-    | Fun  f ->
-        let fresh_fn = fun _ -> fresh_var_i false in
-          make_fun (fresh_label false,
-                    list_map fresh_fn f.args, fresh_var_i false)
-    | _ -> die "copy_toplevel"
+  | Pair _ -> make_pair (fresh_var_i false, fresh_var_i false)
+  | Ref  _ -> make_ref (fresh_label false, fresh_var_i false)
+  | Fun  f ->
+     let fresh_fn = fun _ -> fresh_var_i false in
+     make_fun (fresh_label false,
+               list_map fresh_fn f.args, fresh_var_i false)
+  | _ -> die "copy_toplevel"
 
 
 let has_same_structure (t : tau) (t' : tau) =
   match find t, find t' with
-      Pair _, Pair _ -> true
-    | Ref _, Ref _ -> true
-    | Fun _, Fun _ -> true
-    | Var _, Var _ -> true
-    | _ -> false
+  | Pair _, Pair _ -> true
+  | Ref _, Ref _ -> true
+  | Fun _, Fun _ -> true
+  | Var _, Var _ -> true
+  | _ -> false
 
 
 let pad_args (f, f' : finfo * finfo) : unit =
@@ -798,19 +796,19 @@ let pad_args2 (fi, tlr : finfo * tau list ref) : unit =
 let set_global (t : tau) (b : bool) : unit =
   let set_global_down t =
     match find t with
-        Var v -> v.v_global <- true
-      | Ref r -> set_global_label r.rl true
-      | Fun f -> set_global_label f.fl true
-      | _ -> ()
+    | Var v -> v.v_global <- true
+    | Ref r -> set_global_label r.rl true
+    | Fun f -> set_global_label f.fl true
+    | _ -> ()
   in
     if !debug && b then Printf.printf "Set global: %s\n" (string_of_tau t);
     assert ((not (get_global t)) || b);
     if b then iter_tau set_global_down t;
     match find t with
-        Var v -> v.v_global <- b
-      | Ref r -> r.r_global <- b
-      | Pair p -> p.p_global <- b
-      | Fun f -> f.f_global <- b
+    | Var v -> v.v_global <- b
+    | Ref r -> r.r_global <- b
+    | Pair p -> p.p_global <- b
+    | Fun f -> f.f_global <- b
 
 
 let rec unify_int (t, t' : tau * tau) : unit =
@@ -819,29 +817,29 @@ let rec unify_int (t, t' : tau * tau) : unit =
     let ti, ti' = find t, find t' in
       U.unify combine (t, t');
       match ti, ti' with
-          Var v, Var v' ->
-            set_global t' (v.v_global || get_global t');
-            merge_vholes (v, v');
-            merge_vlbs (v, v');
-            merge_vubs (v, v')
-        | Var v, _ ->
-            set_global t' (v.v_global || get_global t');
-            trigger_vhole v t';
-            notify_vlbs t v;
-            notify_vubs t v
-        | _, Var v ->
-            set_global t (v.v_global || get_global t);
-            trigger_vhole v t;
-            notify_vlbs t' v;
-            notify_vubs t' v
-        | Ref r, Ref r' ->
-            set_global t (r.r_global || r'.r_global);
-            unify_ref (r, r')
-        | Fun f, Fun f' ->
-            set_global t (f.f_global || f'.f_global);
-            unify_fun (f, f')
-        | Pair p, Pair p' -> ()
-        | _ -> raise Inconsistent
+      | Var v, Var v' ->
+         set_global t' (v.v_global || get_global t');
+         merge_vholes (v, v');
+         merge_vlbs (v, v');
+         merge_vubs (v, v')
+      | Var v, _ ->
+         set_global t' (v.v_global || get_global t');
+         trigger_vhole v t';
+         notify_vlbs t v;
+         notify_vubs t v
+      | _, Var v ->
+         set_global t (v.v_global || get_global t);
+         trigger_vhole v t;
+         notify_vlbs t' v;
+         notify_vubs t' v
+      | Ref r, Ref r' ->
+         set_global t (r.r_global || r'.r_global);
+         unify_ref (r, r')
+      | Fun f, Fun f' ->
+         set_global t (f.f_global || f'.f_global);
+         unify_fun (f, f')
+      | Pair p, Pair p' -> ()
+      | _ -> raise Inconsistent
 and notify_vlbs (t : tau) (vi : vinfo) : unit =
   let notify p bounds =
     List.iter
@@ -924,74 +922,74 @@ and merge_vubs (vi, vi' : vinfo * vinfo) : unit =
 and trigger_vhole (vi : vinfo) (t : tau) =
   let add_self_loops (t : tau) : unit =
     match find t with
-        Var v ->
-          H.iter
-            (fun i -> fun _ -> H.replace v.v_hole i ())
-            vi.v_hole
-      | Ref r ->
-          H.iter
-            (fun i -> fun _ ->
-               leq_label (r.rl, (i, Pos), r.rl);
-               leq_label (r.rl, (i, Neg), r.rl))
-            vi.v_hole
-      | Fun f ->
-          H.iter
-            (fun i -> fun _ ->
-               leq_label (f.fl, (i, Pos), f.fl);
-               leq_label (f.fl, (i, Neg), f.fl))
-            vi.v_hole
-      | _ -> ()
+    | Var v ->
+       H.iter
+         (fun i -> fun _ -> H.replace v.v_hole i ())
+         vi.v_hole
+    | Ref r ->
+       H.iter
+         (fun i -> fun _ ->
+                   leq_label (r.rl, (i, Pos), r.rl);
+                   leq_label (r.rl, (i, Neg), r.rl))
+         vi.v_hole
+    | Fun f ->
+       H.iter
+         (fun i -> fun _ ->
+                   leq_label (f.fl, (i, Pos), f.fl);
+                   leq_label (f.fl, (i, Neg), f.fl))
+         vi.v_hole
+    | _ -> ()
   in
-    iter_tau add_self_loops t
+  iter_tau add_self_loops t
 (* Pick the representative info for two tinfo's. This function prefers the
   first argument when both arguments are the same structure, but when
   one type is a structure and the other is a var, it picks the structure.
   All other actions (e.g., updating the info) is done in unify_int *)
 and combine (ti, ti' : tinfo * tinfo) : tinfo =
   match ti, ti' with
-      Var _, _ -> ti'
-    | _, _ -> ti
+  | Var _, _ -> ti'
+  | _, _ -> ti
 and leq_int (t, (i, p), t') : unit =
   if equal_tau t t' then ()
   else
     let ti, ti' = find t, find t' in
       match ti, ti' with
-          Var v, Var v' ->
-            begin
-              match p with
-                  Pos ->
-                    v.v_pubs <- B.add (make_tau_bound (i, t')) v.v_pubs;
-                    v'.v_plbs <- B.add (make_tau_bound (i, t)) v'.v_plbs
-                | Neg ->
-                    v.v_nubs <- B.add (make_tau_bound (i, t')) v.v_nubs;
-                    v'.v_nlbs <- B.add (make_tau_bound (i, t)) v'.v_nlbs
-                | Sub ->
-                    v.v_mubs <- B.add (make_tau_bound (i, t')) v.v_mubs;
-                    v'.v_mlbs <- B.add (make_tau_bound (i, t)) v'.v_mlbs
-            end
-        | Var v, _ ->
-            add_constraint (Unification (t, copy_toplevel t'));
-            add_constraint (Leq (t, (i, p), t'))
-        | _, Var v ->
-            add_constraint (Unification (t', copy_toplevel t));
-            add_constraint (Leq (t, (i, p), t'))
-        | Ref r, Ref r' -> leq_ref (r, (i, p), r')
-        | Fun f, Fun f' -> add_constraint (Unification (t, t'))
-        | Pair pr, Pair pr' ->
-            add_constraint (Leq (pr.ptr, (i, p), pr'.ptr));
-            add_constraint (Leq (pr.lam, (i, p), pr'.lam))
-        | _ -> raise Inconsistent
+      | Var v, Var v' ->
+         begin
+           match p with
+           | Pos ->
+              v.v_pubs <- B.add (make_tau_bound (i, t')) v.v_pubs;
+              v'.v_plbs <- B.add (make_tau_bound (i, t)) v'.v_plbs
+           | Neg ->
+              v.v_nubs <- B.add (make_tau_bound (i, t')) v.v_nubs;
+              v'.v_nlbs <- B.add (make_tau_bound (i, t)) v'.v_nlbs
+           | Sub ->
+              v.v_mubs <- B.add (make_tau_bound (i, t')) v.v_mubs;
+              v'.v_mlbs <- B.add (make_tau_bound (i, t)) v'.v_mlbs
+         end
+      | Var v, _ ->
+         add_constraint (Unification (t, copy_toplevel t'));
+         add_constraint (Leq (t, (i, p), t'))
+      | _, Var v ->
+         add_constraint (Unification (t', copy_toplevel t));
+         add_constraint (Leq (t, (i, p), t'))
+      | Ref r, Ref r' -> leq_ref (r, (i, p), r')
+      | Fun f, Fun f' -> add_constraint (Unification (t, t'))
+      | Pair pr, Pair pr' ->
+         add_constraint (Leq (pr.ptr, (i, p), pr'.ptr));
+         add_constraint (Leq (pr.lam, (i, p), pr'.lam))
+      | _ -> raise Inconsistent
 and leq_ref (ri, (i, p), ri') : unit =
   let add_self_loops (t : tau) : unit =
     match find t with
-        Var v -> H.replace v.v_hole i ()
-      | Ref r ->
-          leq_label (r.rl, (i, Pos), r.rl);
-          leq_label (r.rl, (i, Neg), r.rl)
-      | Fun f ->
-          leq_label (f.fl, (i, Pos), f.fl);
-          leq_label (f.fl, (i, Neg), f.fl)
-      | _ -> ()
+    | Var v -> H.replace v.v_hole i ()
+    | Ref r ->
+       leq_label (r.rl, (i, Pos), r.rl);
+       leq_label (r.rl, (i, Neg), r.rl)
+    | Fun f ->
+       leq_label (f.fl, (i, Pos), f.fl);
+       leq_label (f.fl, (i, Neg), f.fl)
+    | _ -> ()
   in
     iter_tau add_self_loops ri.points_to;
     add_constraint (Unification (ri.points_to, ri'.points_to));
@@ -1003,21 +1001,21 @@ and leq_label (l,(i, p), l') : unit =
       (string_of_label l) i (string_of_polarity p) (string_of_label l');
   let li, li' = find l, find l' in
     match p with
-        Pos ->
-          li.l_ret <- true;
-          li.p_ubounds <- B.add (make_bound (i, l')) li.p_ubounds;
-          li'.p_lbounds <- B.add (make_bound (i, l)) li'.p_lbounds
-      | Neg ->
-          li'.l_param <- true;
-          li.n_ubounds <- B.add (make_bound (i, l')) li.n_ubounds;
-          li'.n_lbounds <- B.add (make_bound (i, l)) li'.n_lbounds
-      | Sub ->
-          if U.equal (l, l') then ()
-          else
-            begin
-              li.m_ubounds <- B.add (make_bound(0, l')) li.m_ubounds;
-              li'.m_lbounds <- B.add (make_bound(0, l)) li'.m_lbounds
-            end
+    | Pos ->
+       li.l_ret <- true;
+       li.p_ubounds <- B.add (make_bound (i, l')) li.p_ubounds;
+       li'.p_lbounds <- B.add (make_bound (i, l)) li'.p_lbounds
+    | Neg ->
+       li'.l_param <- true;
+       li.n_ubounds <- B.add (make_bound (i, l')) li.n_ubounds;
+       li'.n_lbounds <- B.add (make_bound (i, l)) li'.n_lbounds
+    | Sub ->
+       if U.equal (l, l') then ()
+       else
+         begin
+           li.m_ubounds <- B.add (make_bound(0, l')) li.m_ubounds;
+           li'.m_lbounds <- B.add (make_bound(0, l)) li'.m_lbounds
+         end
 and add_constraint_int (c : tconstraint) (toplev : bool) =
   if !debug_constraints && toplev then
     begin
@@ -1029,8 +1027,8 @@ and add_constraint_int (c : tconstraint) (toplev : bool) =
     if !debug_constraints then print_constraint c else ();
   begin
     match c with
-        Unification _ -> Q.add c eq_worklist
-      | Leq _ -> Q.add c leq_worklist
+    | Unification _ -> Q.add c eq_worklist
+    | Leq _ -> Q.add c leq_worklist
   end;
   solve_constraints ()
 and add_constraint (c : tconstraint) =
@@ -1051,18 +1049,18 @@ and fetch_constraint () : tconstraint option =
 (* The main solver loop. *)
 and solve_constraints () : unit =
   match fetch_constraint () with
-      Some c ->
-        begin
-          match c with
-              Unification (t, t') -> unify_int (t, t')
-            | Leq (t, (i, p), t') ->
-                if !no_sub then unify_int (t, t')
-                else
-                  if !analyze_mono then leq_int (t, (0, Sub), t')
-                  else leq_int (t, (i, p), t')
-        end;
-        solve_constraints ()
-    | None -> ()
+  | Some c ->
+     begin
+       match c with
+       | Unification (t, t') -> unify_int (t, t')
+       | Leq (t, (i, p), t') ->
+          if !no_sub then unify_int (t, t')
+          else
+            if !analyze_mono then leq_int (t, (0, Sub), t')
+            else leq_int (t, (i, p), t')
+     end;
+     solve_constraints ()
+  | None -> ()
 
 
 (***********************************************************************)
@@ -1080,27 +1078,27 @@ let rvalue (lv : lvalue) : tau =
   constraints. *)
 let rec deref (t : tau) : lvalue =
   match U.deref t with
-      Pair p ->
-        begin
-          match U.deref p.ptr with
-              Var _ ->
-                let is_global = global_tau p.ptr in
-                let points_to = fresh_var is_global in
-                let l = fresh_label is_global in
-                let r = make_ref (l, points_to)
-                in
-                  add_toplev_constraint (Unification (p.ptr, r));
-                  make_lval (l, points_to)
-            | Ref r -> make_lval (r.rl, r.points_to)
-            | _ -> raise WellFormed
-        end
-    | Var v ->
-        let is_global = global_tau t in
-          add_toplev_constraint
-            (Unification (t, make_pair (fresh_var is_global,
-                                        fresh_var is_global)));
-          deref t
-    | _ -> raise WellFormed
+  | Pair p ->
+     begin
+       match U.deref p.ptr with
+       | Var _ ->
+          let is_global = global_tau p.ptr in
+          let points_to = fresh_var is_global in
+          let l = fresh_label is_global in
+          let r = make_ref (l, points_to)
+          in
+          add_toplev_constraint (Unification (p.ptr, r));
+          make_lval (l, points_to)
+       | Ref r -> make_lval (r.rl, r.points_to)
+       | _ -> raise WellFormed
+     end
+  | Var v ->
+     let is_global = global_tau t in
+     add_toplev_constraint
+       (Unification (t, make_pair (fresh_var is_global,
+                                   fresh_var is_global)));
+     deref t
+  | _ -> raise WellFormed
 
 (** Form the union of [t] and [t'], if it doesn't exist already. *)
 let join (t : tau) (t' : tau) : tau =
@@ -1140,30 +1138,30 @@ let assign_ret (i : int) (lv : lvalue) (t : tau) : unit =
   no discovered structure, raise NoContents. *)
 let proj_ref (t : tau) : tau =
   match U.deref t with
-      Pair p -> p.ptr
-    | Var v -> raise NoContents
-    | _ ->  raise WellFormed
+  | Pair p -> p.ptr
+  | Var v -> raise NoContents
+  | _ ->  raise WellFormed
 
 (* Project out the second (fun) component of a pair. If the argument [t] has
    no discovered structure, create it on the fly by adding constraints. *)
 let proj_fun (t : tau) : tau =
   match U.deref t with
-      Pair p -> p.lam
-    | Var v ->
-        let p, f = fresh_var false, fresh_var false in
-          add_toplev_constraint (Unification (t, make_pair(p, f)));
-          f
-    | _ -> raise WellFormed
+  | Pair p -> p.lam
+  | Var v ->
+     let p, f = fresh_var false, fresh_var false in
+     add_toplev_constraint (Unification (t, make_pair(p, f)));
+     f
+  | _ -> raise WellFormed
 
 let get_args (t : tau) : tau list =
   match U.deref t with
-      Fun f -> f.args
-    | _ -> raise WellFormed
+  | Fun f -> f.args
+  | _ -> raise WellFormed
 
 let get_finfo (t : tau) : finfo =
   match U.deref t with
-      Fun f -> f
-    | _ -> raise WellFormed
+  | Fun f -> f
+  | _ -> raise WellFormed
 
 (** Function type [t] is applied to the arguments [actuals]. Unifies the
   actuals with the formals of [t]. If no functions have been discovered for
@@ -1175,16 +1173,16 @@ let apply (t : tau) (al : tau list) : (tau * int) =
   let actuals = ref al in
   let fi,ret =
     match U.deref f with
-        Fun fi -> fi, fi.ret
-      | Var v ->
-          let new_l, new_ret, new_args =
-            fresh_label false, fresh_var false,
-            list_map (function _ -> fresh_var false) !actuals
-          in
-          let new_fun = make_fun (new_l, new_args, new_ret) in
-            add_toplev_constraint (Unification (new_fun, f));
-            (get_finfo new_fun, new_ret)
-      | _ -> raise WellFormed
+    | Fun fi -> fi, fi.ret
+    | Var v ->
+       let new_l, new_ret, new_args =
+         fresh_label false, fresh_var false,
+         list_map (function _ -> fresh_var false) !actuals
+       in
+       let new_fun = make_fun (new_l, new_args, new_ret) in
+       add_toplev_constraint (Unification (new_fun, f));
+       (get_finfo new_fun, new_ret)
+    | _ -> raise WellFormed
   in
     pad_args2 (fi, actuals);
     List.iter2
@@ -1233,9 +1231,9 @@ let make_summary = leq_label
 let path_signature k l l' b : int list =
   let ksig =
     match k with
-        Positive -> 1
-      | Negative -> 2
-      | _ -> 3
+    | Positive -> 1
+    | Negative -> 2
+    | _ -> 3
   in
     [ksig;
      get_label_stamp l;
@@ -1252,15 +1250,15 @@ let make_path (k, l, l', b) =
         Q.add new_path path_worklist;
         begin
           match k with
-              Positive ->
-                li.p_upath <- P.add new_path li.p_upath;
-                li'.p_lpath <- P.add new_path li'.p_lpath
-            | Negative ->
-                li.n_upath <- P.add new_path li.n_upath;
-                li'.n_lpath <- P.add new_path li'.n_lpath
-            | _ ->
-                li.m_upath <- P.add new_path li.m_upath;
-                li'.m_lpath <- P.add new_path li'.m_lpath
+          | Positive ->
+             li.p_upath <- P.add new_path li.p_upath;
+             li'.p_lpath <- P.add new_path li'.p_lpath
+          | Negative ->
+             li.n_upath <- P.add new_path li.n_upath;
+             li'.n_lpath <- P.add new_path li'.n_lpath
+          | _ ->
+             li.m_upath <- P.add new_path li.m_upath;
+             li'.m_lpath <- P.add new_path li'.m_lpath
         end;
         if !debug then
           begin
@@ -1389,11 +1387,11 @@ let backwards_tabulate (l : label) : unit =
             end;
           begin
             match p.kind with
-                Positive ->
-                  if is_global_label p.tail then matched_backward_rules p
-                  else positive_backward_rules p
-              | Negative -> negative_backward_rules p
-              | _ -> matched_backward_rules p
+            | Positive ->
+               if is_global_label p.tail then matched_backward_rules p
+               else positive_backward_rules p
+            | Negative -> negative_backward_rules p
+            | _ -> matched_backward_rules p
           end;
           loop ()
   in (* backwards_tabulate *)
@@ -1417,17 +1415,17 @@ let collect_ptsets (l : label) : constantset = (* todo -- cache aliases *)
 let extract_ptlabel (lv : lvalue) : label option =
   try
     match find (proj_ref lv.contents) with
-        Var v -> None
-      | Ref r ->  Some r.rl;
-      | _ -> raise WellFormed
+    | Var v -> None
+    | Ref r ->  Some r.rl;
+    | _ -> raise WellFormed
   with NoContents -> None
 
 let points_to_aux (t : tau) : constant list =
   try
     match find (proj_ref t) with
-        Var v -> []
-      | Ref r -> C.elements (collect_ptsets r.rl)
-      | _ -> raise WellFormed
+    | Var v -> []
+    | Ref r -> C.elements (collect_ptsets r.rl)
+    | _ -> raise WellFormed
   with NoContents -> []
 
 let points_to_names (lv : lvalue) : string list =
@@ -1497,23 +1495,23 @@ let smart_alias_query (l : label) (l' : label) : bool =
               (get_bounds Pos false l'); (* positive self-loops on l *)
           begin
             match c with  (* negative transitions on l, only if Open *)
-                Open ->
-                  B.iter
-                    (fun lb ->
-                       let matching =
-                         filter_match lb.index (get_bounds Neg false l')
-                       in
-                         B.iter
-                           (fun b -> simulate Open lb.info b.info)
-                           matching ;
-                         if is_global_label l' then (* neg self-loops on l' *)
-                           simulate Open lb.info l')
-                    (get_bounds Neg false l);
-                  if is_global_label l then
-                    B.iter
-                      (fun lb -> simulate Open l lb.info)
-                      (get_bounds Neg false l') (* negative self-loops on l *)
-              | _ -> ()
+            | Open ->
+               B.iter
+                 (fun lb ->
+                   let matching =
+                     filter_match lb.index (get_bounds Neg false l')
+                   in
+                   B.iter
+                     (fun b -> simulate Open lb.info b.info)
+                     matching ;
+                   if is_global_label l' then (* neg self-loops on l' *)
+                     simulate Open lb.info l')
+                 (get_bounds Neg false l);
+               if is_global_label l then
+                 B.iter
+                   (fun lb -> simulate Open l lb.info)
+                   (get_bounds Neg false l') (* negative self-loops on l *)
+            | _ -> ()
           end;
           (* if we got this far, then the configuration was not used *)
           CH.add dead_configs config ();
@@ -1550,14 +1548,14 @@ let may_alias (t1 : tau) (t2 : tau) : bool =
   try
     let l1 =
       match find (proj_ref t1) with
-          Ref r -> r.rl
-        | Var v -> raise NoContents
-        | _ -> raise WellFormed
+      | Ref r -> r.rl
+      | Var v -> raise NoContents
+      | _ -> raise WellFormed
     and l2 =
       match find (proj_ref t2) with
-          Ref r -> r.rl
-        | Var v -> raise NoContents
-        | _ -> raise WellFormed
+      | Ref r -> r.rl
+      | Var v -> raise NoContents
+      | _ -> raise WellFormed
     in
       not (C.is_empty (C.inter (collect_ptsets l1) (collect_ptsets l2)))
   with NoContents -> false
@@ -1574,28 +1572,28 @@ let alias_query (b : bool) (lvl : lvalue list) : int * int =
       lbls in
   let record_alias s lo s' lo' =
     match lo, lo' with
-        Some l, Some l' ->
-          if !debug_aliases then
-            Printf.printf
-              "Checking whether %s and %s are aliased...\n"
-              (string_of_label l)
-              (string_of_label l');
-          if C.is_empty (C.inter s s') then ()
-          else
-            begin
-              incr naive_count;
-              if !smart_aliases && smart_alias_query l l' then
-                incr smart_count
-            end
-      | _ -> ()
+    | Some l, Some l' ->
+       if !debug_aliases then
+         Printf.printf
+           "Checking whether %s and %s are aliased...\n"
+           (string_of_label l)
+           (string_of_label l');
+       if C.is_empty (C.inter s s') then ()
+       else
+         begin
+           incr naive_count;
+           if !smart_aliases && smart_alias_query l l' then
+             incr smart_count
+         end
+    | _ -> ()
   in
   let rec check_alias sets labels =
     match sets,labels with
-        s :: st, l :: lt ->
-          List.iter2 (record_alias s l) ptsets lbls;
-          check_alias st lt
-      | [], [] -> ()
-      | _ -> die "check_alias"
+    | s :: st, l :: lt ->
+       List.iter2 (record_alias s l) ptsets lbls;
+       check_alias st lt
+    | [], [] -> ()
+    | _ -> die "check_alias"
   in
     check_alias ptsets lbls;
     (!naive_count, !smart_count)
@@ -1637,11 +1635,11 @@ let alias_frequency (lvl : (lvalue * bool) list) : int * int =
   in
   let rec check_alias sets labels =
     match sets, labels with
-        s :: st, l :: lt ->
-          List.iter2 (record_alias s l) ptsets lbls;
-          check_alias st lt
-      | [], [] -> ()
-      | _ -> die "check_alias"
+    | s :: st, l :: lt ->
+       List.iter2 (record_alias s l) ptsets lbls;
+       check_alias st lt
+    | [], [] -> ()
+    | _ -> die "check_alias"
   in
     check_alias ptsets lbls;
     (!naive_count, !smart_count)
@@ -1665,9 +1663,9 @@ let phonyAddrOf (lv : lvalue) : lvalue =
 (* transitive closure of points to, starting from l *)
 let rec tauPointsTo (l : tau) : absloc list =
   match find l with
-      Var _ -> []
-    | Ref r -> r.rl :: tauPointsTo r.points_to
-    | _ -> []
+  | Var _ -> []
+  | Ref r -> r.rl :: tauPointsTo r.points_to
+  | _ -> []
 
 let absloc_points_to (l : lvalue) : absloc list =
   tauPointsTo l.contents
