@@ -366,7 +366,7 @@ module GPPopulation =
       let output = ref [] in
       let half = (List.length mating_list) / 2 in
       for it = 0 to (half - 1) do
-        lept parent1 = List.nth mating_list it in
+        let parent1 = List.nth mating_list it in
         let parent2 = List.nth mating_list (half + it) in
         if maybe_cross () then
           output := (do_cross original parent1 parent2) @ !output
