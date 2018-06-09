@@ -72,7 +72,8 @@ let () =
 
       "--format",
       Arg.Set_string output_format,
-      "X format for serialized population.  Options: bin/binary, txt.  Default: txt";
+      "X format for serialized population.  Options: bin/binary, txt.  \
+       Default: txt";
 
       "--tournament-size",
       Arg.Set_int tournament_k,
