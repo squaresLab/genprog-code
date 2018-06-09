@@ -246,36 +246,36 @@ module GPPopulation =
     let selection ?(compare_func=compare_fitness) population desired =
       tournament_selection ~compare_func population desired
 
-  let crossover_patch_old_behavior ?(test = 0)
-      (original :('a,'b) Rep.representation)
-      (variant1 :('a,'b) Rep.representation)
-      (variant2 :('a,'b) Rep.representation)
-      : (('a,'b) representation) list =
-    let h1 = variant1#get_history () in
-    let h2 = variant2#get_history () in
-    let wp = lmap fst (variant1#get_faulty_atoms ()) in
-    let point = if test=0 then Random.int (llen wp) else test in
-    let first_half,second_half = split_nth wp point in
-    let c_one = original#copy () in
-    let c_two = original#copy () in
-    let split_history history =
-      let split = function
-        | Delete (num) | Append (num, _) | Swap (num, _) | Replace (num, _) ->
-           List.mem num first_half
-        | _ ->
-           abort ("unexpected edit in history in patch_old_behavior crossover")
+    let crossover_patch_old_behavior ?(test = 0)
+          (original :('a,'b) Rep.representation)
+          (variant1 :('a,'b) Rep.representation)
+          (variant2 :('a,'b) Rep.representation)
+        : (('a,'b) representation) list =
+      let h1 = variant1#get_history () in
+      let h2 = variant2#get_history () in
+      let wp = lmap fst (variant1#get_faulty_atoms ()) in
+      let point = if test=0 then Random.int (llen wp) else test in
+      let first_half,second_half = split_nth wp point in
+      let c_one = original#copy () in
+      let c_two = original#copy () in
+      let split_history history =
+        let split = function
+          | Delete (num) | Append (num, _) | Swap (num, _) | Replace (num, _) ->
+             List.mem num first_half
+          | _ ->
+             abort "unexpected edit in history in patch_old_behavior crossover"
+        in
+        List.partition split history
       in
-      List.partition split history
-    in
-    let h11, h12 = split_history h1 in
-    let h21, h22 = split_history h2 in
-    let new_h1 = lmap (c_one#history_element_to_str) (h11 @ h22) in
-    let new_h2 = lmap (c_two#history_element_to_str) (h21 @ h12) in
-    let new_h1 = lfoldl (fun acc str -> acc^str^" ") "" new_h1 in
-    let new_h2 = lfoldl (fun acc str -> acc^str^" ") "" new_h2 in
-      c_one#load_genome_from_string new_h1 ;
-      c_two#load_genome_from_string new_h2 ;
-      [c_one ; c_two ]
+      let h11, h12 = split_history h1 in
+      let h21, h22 = split_history h2 in
+      let new_h1 = lmap (c_one#history_element_to_str) (h11 @ h22) in
+      let new_h2 = lmap (c_two#history_element_to_str) (h21 @ h12) in
+      let new_h1 = lfoldl (fun acc str -> acc^str^" ") "" new_h1 in
+      let new_h2 = lfoldl (fun acc str -> acc^str^" ") "" new_h2 in
+      c_one#load_genome_from_string new_h1;
+      c_two#load_genome_from_string new_h2;
+      [c_one; c_two]
 
   (* Patch Subset Crossover; works on all representations even though it was
      originally designed just for cilrep patch *)
