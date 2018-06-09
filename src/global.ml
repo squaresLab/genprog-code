@@ -255,10 +255,10 @@ let copy_closures (x : 'a) =
     (Marshal.from_string str 0 : 'a)
 
 (** a weighted coin toss with probability p *)
-let probability p =
-  if p <= 0.0 then false
-  else if p >= 1.0 then true
-  else Random.float 1.0 <= p
+let probability = function
+  | p when p <= 0.0 -> false
+  | p when p >= 1.0 -> true
+  | p -> Random.float 1.0 <= p
 
 (** the average of a list of values *)
 let mean xs =
