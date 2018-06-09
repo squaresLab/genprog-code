@@ -56,9 +56,9 @@ let debug_out = ref stdout
 let debug ?force_gui:(force_gui=false) fmt =
   let k result =
     if not !quiet && force_gui || not !gui then begin
-        output_string !debug_out result ;
-        output_string stdout result ;
-        flush stdout ;
+        output_string !debug_out result;
+        output_string stdout result;
+        flush stdout;
         flush !debug_out;
       end
   in
@@ -69,24 +69,24 @@ let debug ?force_gui:(force_gui=false) fmt =
 let abort fmt =
   let k result =
     if not !gui then begin
-        output_string !debug_out result ;
-        output_string stdout result ;
-        flush stdout ;
+        output_string !debug_out result;
+        output_string stdout result;
+        flush stdout;
         flush !debug_out;
       end;
     exit 1
   in
-  debug "\nABORT:\n\n" ;
+  debug "\nABORT:\n\n";
   Printf.ksprintf k fmt
 
 (** {6 Subprocess Management} *)
 
 (** Process information returned by [popen]. *)
 type process_info = {
-    pid  : int ;
-    fin  : out_channel option ;
-    fout : in_channel option ;
-    ferr : in_channel option ;
+    pid  : int;
+    fin  : out_channel option;
+    fout : in_channel option;
+    ferr : in_channel option;
   }
 
 (** I/O redirection modes for [popen]. *)
@@ -155,7 +155,7 @@ let popen ?(stdin=Keep) ?(stdout=Keep) ?(stderr=Keep) cmd args =
     | UseChannel(chan) -> None, Unix.descr_of_out_channel chan
     | UseDescr(descr)  -> None, descr
   in
-  incr popen_gc_count ;
+  incr popen_gc_count;
   if (!popen_gc_count == 0) || (!popen_gc_count > 1000) then begin
     popen_gc_count := 0;
     Gc.compact ();
@@ -185,7 +185,7 @@ let uniq lst =
   let lst = List.filter (fun elt ->
     if Hashtbl.mem ht elt then false
     else begin
-      Hashtbl.add ht elt () ;
+      Hashtbl.add ht elt ();
       true
     end
   ) lst in
@@ -195,9 +195,9 @@ let float_array_to_str fa =
   let b = Buffer.create 255 in
   let size = Array.length fa in
     Array.iteri (fun i v ->
-      Printf.bprintf b "%g" v ;
+      Printf.bprintf b "%g" v;
       if i < pred size then Printf.bprintf b ", "
-    ) fa ;
+    ) fa;
     Buffer.contents b
 
 (** split "filename.dat" into ["filename";"dat"] *)
@@ -234,7 +234,7 @@ let rec ensure_directories_exist filename =
   match split_base_subdirs_ext filename with
   | "",_,_ | ".",_,_ | "/",_,_ -> ()
   | dirname,_,_ ->
-    ensure_directories_exist dirname ;
+    ensure_directories_exist dirname;
     (try Unix.mkdir dirname 0o755 with _ -> ())
 
 (** return the size of the given file on the disk *)
@@ -272,7 +272,7 @@ let col_means xss =
   let m = Array.make ncols 0.0 in
   let _ =
     List.fold_left (fun n xs ->
-      Array.iteri (fun i x -> m.(i) <- m.(i) +. (x -. m.(i)) /. n) xs ;
+      Array.iteri (fun i x -> m.(i) <- m.(i) +. (x -. m.(i)) /. n) xs;
       n +. 1.0
     ) 1.0 xss
   in
@@ -287,9 +287,9 @@ let col_mean_stddev xss =
     List.fold_left (fun n xs ->
       Array.iteri (fun i x ->
         let delta = x -. m.(i) in
-          m.(i) <- m.(i) +. delta /. n ;
+          m.(i) <- m.(i) +. delta /. n;
           m2.(i) <- m2.(i) +. delta *. (x -. m.(i))
-      ) xs ;
+      ) xs;
       n +. 1.0
     ) 1.0 xss
   in
@@ -302,7 +302,7 @@ let col_mean_stddev xss =
 let my_int_of_string str =
   try
     let res = ref 0 in
-      Scanf.sscanf str " %i" (fun i -> res := i) ;
+      Scanf.sscanf str " %i" (fun i -> res := i);
       !res
   with _ -> begin
     if String.lowercase_ascii str = "true" then 1
@@ -313,7 +313,7 @@ let my_int_of_string str =
 let my_float_of_string str =
   try
     let res = ref 0.0 in
-      Scanf.sscanf str " %f" (fun i -> res := i) ;
+      Scanf.sscanf str " %f" (fun i -> res := i);
       !res
   with _ -> begin
     if String.lowercase_ascii str = "true" then 1.0
@@ -327,9 +327,9 @@ let file_to_string (file : string) : string =
       let fin = open_in file in
         (try while true do
             let line = input_line fin in
-              Buffer.add_string b line ;
-              Buffer.add_char b '\n' ;
-          done ; with _ -> begin close_in fin end) ;
+              Buffer.add_string b line;
+              Buffer.add_char b '\n';
+          done; with _ -> begin close_in fin end);
         Buffer.contents b
     with _ -> Buffer.contents b
 
@@ -352,9 +352,9 @@ let count_lines_in_file (file : string) : float =
     let count = ref 0 in
       (try while true do
           let line = input_line fin in
-            ignore line ;
+            ignore line;
             incr count
-        done ; 0. with _ -> begin close_in fin ; float_of_int !count end)
+        done; 0. with _ -> begin close_in fin; float_of_int !count end)
   with _ -> 0.
 
 let get_lines (filename : string) : string list =
@@ -594,19 +594,19 @@ let parse_options_in_file (file : string) : unit =
         let words = Str.bounded_split space_regexp line 2 in
         args := !args @ words
       end
-    done with _ -> close_in fin) ;
-  with e -> ()) ;
-  Arg.current := 0 ;
+    done with _ -> close_in fin);
+  with e -> ());
+  Arg.current := 0;
   Arg.parse_argv (Array.of_list !args)
     (Arg.align !options)
-    (fun str -> debug "%s: unknown option %s\n"  file str ; exit 1) usageMsg ;
+    (fun str -> debug "%s: unknown option %s\n"  file str; exit 1) usageMsg;
   ()
 
 (** Utility function to read 'command-line arguments' with some support for
     deprecated arguments. *)
 let parse_options_with_deprecated () : unit =
   let deprecated_usage arg =
-    Printf.printf "usage: the option %s is no longer supported and cannot be " arg ;
+    Printf.printf "usage: the option %s is no longer supported and cannot be " arg;
     Printf.printf "jury-rigged into the current implementation.\n";
     Printf.printf "\tit is likely that the functionality you are looking for no ";
     Printf.printf "longer exists, or has been moved into an external program (e.g.,";
@@ -636,7 +636,7 @@ let parse_options_with_deprecated () : unit =
     | arg :: args when List.mem arg deprecated_options ->
       deprecated_warning arg;
       if List.mem arg with_arg then begin
-        deprecated := !deprecated @ [arg ; List.hd args];
+        deprecated := !deprecated @ [arg; List.hd args];
         get_args (List.tl args)
       end else begin
         deprecated := !deprecated @ [arg];
@@ -649,7 +649,7 @@ let parse_options_with_deprecated () : unit =
     let aligned = Arg.align !options in
       (* first, parse the arguments, saving config files to parse *)
       try
-        Arg.parse_argv (Array.of_list !all_args) aligned handleArg usageMsg ;
+        Arg.parse_argv (Array.of_list !all_args) aligned handleArg usageMsg;
 
           (* now, parse each config file *)
           List.iter
@@ -669,7 +669,7 @@ let parse_options_with_deprecated () : unit =
                       deprecated_warning str;
                       deprecated := !deprecated @ words
                     | _ -> args := !args @ words) lines;
-              Arg.current := 0 ;
+              Arg.current := 0;
             (* parse the arguments in this config file *)
               Arg.parse_argv (Array.of_list !args)
                 aligned (usage_function aligned usageMsg) usageMsg
@@ -678,7 +678,7 @@ let parse_options_with_deprecated () : unit =
 
       (* if some of the files contained deprecated arguments, handle these now *)
         if (List.length !deprecated) > 1 then begin
-          Arg.current := 0 ;
+          Arg.current := 0;
           let aligned = Arg.align deprecated_and_simulable in
           (* parse the deprecated arguments to construct a new string of arguments to parse again...*)
             new_deprecated_args := (Sys.argv.(0))^" ";
@@ -686,7 +686,7 @@ let parse_options_with_deprecated () : unit =
               aligned (usage_function aligned usageMsg) usageMsg;
             debug "new deprecated: %s\n" !new_deprecated_args;
             let args = Str.split whitespace_regexp !new_deprecated_args in
-              Arg.current := 0 ;
+              Arg.current := 0;
             (* ...and reparse *)
               let aligned = Arg.align !options in
                 Arg.parse_argv (Array.of_list args)
@@ -861,7 +861,7 @@ let bytes_per_word =
   if max_int = 1073741823 then 4 else 8
 
 let live_bytes () : int =
-  Gc.full_major () ; (* "will collect all currently unreacahble blocks" *)
+  Gc.full_major (); (* "will collect all currently unreacahble blocks" *)
   let gc_stat = Gc.stat () in
     gc_stat.Gc.live_words * bytes_per_word
 
@@ -877,7 +877,7 @@ let choose_one_weighted (lst : ('a * float) list) : 'a * float =
   assert(lst <> []);
   let total_weight = List.fold_left (fun acc (sid,prob) ->
     acc +. prob) 0.0 lst in
-    assert(total_weight > 0.0) ;
+    assert(total_weight > 0.0);
     let wanted = Random.float total_weight in
     let rec walk lst sofar =
       match lst with
@@ -941,15 +941,15 @@ let deprecated_options = [
   (* ...just always use the full paths *)
   "--use-full-paths", Arg.Set use_full_paths, " use full pathnames";
   (* intuit this from usage *)
-  "--multi-file", Arg.Set multi_file, "X program has multiple source files.  Will use separate subdirs."  ;
+  "--multi-file", Arg.Set multi_file, "X program has multiple source files.  Will use separate subdirs.";
   (* just a sanity flag *)
   "--skip-sanity", Arg.Set skip_sanity, " skip sanity checking";
   "--force-sanity", Arg.Set force_sanity, " force sanity checking";
   (* set mutp > 0, no? *)
-  "--use-subatoms", Arg.Set use_subatoms, " use subatoms (expression-level mutation)" ;
-  "--print-func-lines", Arg.Set print_func_lines, " print start/end line numbers of all functions" ;
+  "--use-subatoms", Arg.Set use_subatoms, " use subatoms (expression-level mutation)";
+  "--print-func-lines", Arg.Set print_func_lines, " print start/end line numbers of all functions";
   (* I don't know why we ever would *)
-  "--print-line-numbers", Arg.Set print_line_numbers, " do print CIL #line numbers" ;
+  "--print-line-numbers", Arg.Set print_line_numbers, " do print CIL #line numbers";
   (* redundant with --coverage-info; remember to fix that, btw *)
   "--print-fix-info", Arg.Set_string print_fix_info, " translate the line file into a list of statements, print to file X.";
   "--one-pos", Arg.Set one_positive_path, " Run only one positive test case, typically for the sake of speed.";
@@ -958,9 +958,9 @@ let deprecated_options = [
   "X Walk a population of size X through the neutral space.";
   "--suffix-extension", Arg.Set_string suffix_extension, "X append X to source filename";
   (* I'm 99% confident that literally no one uses this *)
-  "--no-canonify-sids", Arg.Clear use_canonical_source_sids, " keep identical source smts separate" ;
+  "--no-canonify-sids", Arg.Clear use_canonical_source_sids, " keep identical source smts separate";
   (* separate main for server, like nht *)
-  "--server", Arg.Set server, " This is server machine"   ;
+  "--server", Arg.Set server, " This is server machine";
   (* there's no really good reason to *not* replace existing subdirs *)
   "--delete-subdirs", Arg.Set delete_existing_subdirs, " recreate subdirectories if they already exist. Default: false";
   (* I actually don't think we need this since it's always renamed to .neg and .pos anyway *)
@@ -968,11 +968,11 @@ let deprecated_options = [
   (* I think output_binrep will be dealt with via better serialization *)
   "--output-binrep", Arg.Set output_binrep, " output binary representations with source files";
   "--apply-diff", Arg.Set_string apply_diff_script, " Apply a diff script";
-  "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
+  "--debug-put", Arg.Set debug_put, " note each #put in a variant's name";
   "--convert-swaps", Arg.Set convert_swaps, " Convert swaps into two deletes and two appends before minimizing.";
   "--uniq-cov", Arg.Set uniq_coverage, " you should use --uniq instead";
   (* settable with the probabilities *)
-  "--robustness-ops", Arg.Set_string robustness_ops, "X only test robustness of operations in X, e.g., 'ad' for 'append' and 'delete'" ;
+  "--robustness-ops", Arg.Set_string robustness_ops, "X only test robustness of operations in X, e.g., 'ad' for 'append' and 'delete'";
   (* this was for me and I never used it *)
   "--preprocess", Arg.Set preprocess, " preprocess the C code before parsing. Def: false";
   (* just one: --sample-runs *)
