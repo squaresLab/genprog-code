@@ -196,8 +196,15 @@ let main () = begin
             Sys.argv.(1)
           with _ -> "repair.cache.human"
         in
-        if filename = "help" || filename = "-help" || filename = "--help" then begin
-            Printf.printf "test-cache-reader: a utility to produce a human readable test cache from the test cache of a previous repair run. The only parameter is the filename into which the human readable cache should be printed.";
+        if filename = "help" || filename = "-help" || filename = "--help" then
+          begin
+            let info_message =
+              format_of_string
+                "test-cache-reader: a utility to produce a human readable test \
+                 cache from the test cache of a previous repair run. The only \
+                 parameter is the filename into which the human readable cache \
+                 should be printed." in
+            Printf.printf info_message;
             exit 0
           end;
         Rep.human_readable_cache_save filename;
@@ -212,26 +219,27 @@ let main () = begin
         exit 0
       end;
     let debug_str = sprintf "repair.debug.%d" !random_seed in
-    debug_out := open_out debug_str ;
+    debug_out := open_out debug_str;
 
     debug "GenProg Version: %s\n\n" Version.version;
     (* For debugging and reproducibility purposes, print out the values of
      * all command-line argument-settable global variables. *)
     let print_args (name, arg, _) =
-      if name = "-help" || name = "--help" then ()
-      else
-        let debug_string =
-          match arg with
-          | Arg.Set br | Arg.Clear br -> sprintf "%b" !br
-          | Arg.Set_string sr -> sprintf "%S" !sr
-          | Arg.Set_int ir -> sprintf "%d" !ir
-          | Arg.Set_float fr -> sprintf "%g" !fr
-          | _ -> "?"
-        in
-        debug "%s %s\n" name debug_string
+      match name with
+      | "-help" | "--help" -> ()
+      | _ ->
+         let debug_string =
+           match arg with
+           | Arg.Set br | Arg.Clear br -> sprintf "%b" !br
+           | Arg.Set_string sr -> sprintf "%S" !sr
+           | Arg.Set_int ir -> sprintf "%d" !ir
+           | Arg.Set_float fr -> sprintf "%g" !fr
+           | _ -> "?"
+         in
+         debug "%s %s\n" name debug_string
     in
-    let sorted_args =
-      List.sort (fun (arg1, _, _) (arg2, _, _) -> compare arg1 arg2) !options in
+    let compare_args (arg1, _, _) (arg2, _, _) = compare arg1 arg2 in
+    let sorted_args = List.sort compare_args !options in
     List.iter print_args sorted_args;
 
     (* Cloud-computing debugging: print out machine information. *)
