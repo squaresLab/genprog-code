@@ -180,16 +180,16 @@ let system cmd =
 
 (* {6 Utility Functions} *)
 (** return a copy of 'lst' where each element occurs once *)
-let uniq lst =
+let uniq list =
   let ht = Hashtbl.create 255 in
-  let lst = List.filter (fun elt ->
-    if Hashtbl.mem ht elt then false
+  let seen_once element =
+    if Hashtbl.mem ht element then false
     else begin
-      Hashtbl.add ht elt ();
-      true
-    end
-  ) lst in
-    lst
+        Hashtbl.add ht element ();
+        true
+      end
+  in
+  List.filter seen_once list
 
 let float_array_to_str fa =
   let b = Buffer.create 255 in
