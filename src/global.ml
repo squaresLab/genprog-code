@@ -54,17 +54,15 @@ let debug_out = ref stdout
 (**/**)
 (** we copy all debugging output to a file and to stdout *)
 let debug ?force_gui:(force_gui=false) fmt =
-  let k result = begin
-    if not !quiet then begin
-    if force_gui || not !gui then begin
-      output_string !debug_out result ;
-      output_string stdout result ;
-      flush stdout ;
-      flush !debug_out;
-    end
-    end
-  end in
-    Printf.kprintf k fmt
+  let k result =
+    if not !quiet && force_gui || not !gui then begin
+        output_string !debug_out result ;
+        output_string stdout result ;
+        flush stdout ;
+        flush !debug_out;
+      end
+  in
+  Printf.ksprintf k fmt
 
 (** much like debug, but with ABORT prepending to the message and exits 1 when
     done *)
