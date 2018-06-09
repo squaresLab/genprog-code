@@ -160,8 +160,7 @@ module GPPopulation =
         if !output_format = "txt" then
           failwith "txt format, skipping binary attempt";
         let version = Marshal.from_channel fin in
-        if version <> population_version then
-          begin
+        if version <> population_version then begin
             debug "population: %s has different version: %s\n" filename version;
             failwith "version mismatch"
           end;
@@ -178,8 +177,7 @@ module GPPopulation =
           done;
           !pop
         with End_of_file -> !pop
-      with _ ->
-        begin
+      with _ -> begin
           close_in fin;
           pop := [];
           try
@@ -201,31 +199,35 @@ module GPPopulation =
     let compare_fitness (i : ('a,'b) individual) (i' : ('a,'b) individual) =
       compare (i#fitness () |> get_opt) (i'#fitness () |> get_opt)
 
-  (** [one_tournament compare_func population] conducts a single tournament to
-      select a variant from the population. The [compare_func] should take two
-      inviduals and return a positive number if the first is preferred, a
-      negative number if the second is preferred, and 0 if neither is preferred.
-  *)
-  let one_tournament ?(compare_func=compare_fitness) (population : ('a,'b) t) =
-    assert ( !tournament_k >= 1 ) ;
-    assert ( 0.0 <= !tournament_p ) ;
-    assert ( !tournament_p <= 1.0 ) ;
-    assert ( List.length population > 0 ) ;
+    (** [one_tournament compare_func population] conducts a single tournament to
+        select a variant from the population. The [compare_func] should take two
+        inviduals and return a positive number if the first is preferred, a
+        negative number if the second is preferred, and 0 if neither is
+        preferred. *)
+    let one_tournament ?(compare_func=compare_fitness)
+          (population : ('a,'b) t) =
+      assert (!tournament_k >= 1);
+      assert (0.0 <= !tournament_p);
+      assert (!tournament_p <= 1.0);
+      assert (List.length population > 0);
 
-    let rec select_one () =
-      (* choose k individuals at random *)
-      let pool = first_nth (random_order population) !tournament_k in
-      (* sort them from most fit to least *)
-      let sorted = lrev (List.sort compare_func pool) in
-      (* select one with geometrically decreasing probability *)
-      let rec walk p = function
-        | [] -> select_one ()
-        | indiv :: rest ->
-          let taken = (1.0 = p) || (Random.float 1.0 <= p) in
-            if taken then indiv else walk (p *. (1.0 -. !tournament_p)) rest
-      in
+      let rec select_one () =
+        (* choose k individuals at random *)
+        let pool = first_nth (random_order population) !tournament_k in
+        (* sort them from most fit to least *)
+        let sorted = List.rev (List.sort compare_func pool) in
+        (* select one with geometrically decreasing probability *)
+        let rec walk probability = function
+          | [] -> select_one ()
+          | indiv :: rest ->
+             let taken =
+               (1.0 = probability) || (Random.float 1.0 <= probability) in
+             if taken then indiv else
+               let p = probability *. (1.0 -. !tournament_p) in
+               walk p rest
+        in
         walk !tournament_p sorted
-    in
+      in
       select_one ()
 
   (** {b tournament_selection} variant_comparison_function population
