@@ -286,17 +286,17 @@ module GPPopulation =
         : (('a,'b) representation) list =
       let g1 = variant1#get_genome () in
       let g2 = variant2#get_genome () in
-      let new_g1 = List.fold_left (fun acc elt ->
-                       if probability !crossp then acc @ [elt] else acc
-                     ) [] (g1 @ g2) in
-      let new_g2 = List.fold_left (fun acc elt ->
-                       if probability !crossp then acc @ [elt] else acc
-                     ) [] (g2 @ g1) in
+      let new_genome genome =
+        let add_gene genome gene =
+          if probability !crossp then genome @ [gene] else genome in
+        List.fold_left add_gene [] genome in
+      let new_g1 = new_genome (g1 @ g2) in
+      let new_g2 = new_genome (g2 @ g1) in
       let c_one = original#copy () in
       let c_two = original#copy () in
       c_one#set_genome new_g1;
       c_two#set_genome new_g2;
-      [c_one; c_two ]
+      [c_one; c_two]
 
     (* One point crossover *)
     let crossover_one_point ?(test = 0)
