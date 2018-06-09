@@ -262,9 +262,9 @@ let probability = function
 
 (** the average of a list of values *)
 let mean xs =
-  fst (List.fold_left (fun (m,n) x ->
-    (m +. (x -. m) /. n), (n +. 1.0)
-  ) (0.0, 1.0) xs)
+  let count = float (List.length xs) in
+  let sum = List.fold_left (+.) 0.0 xs in
+  sum /. count
 
 (** the column-wise average of a list of rows of values *)
 let col_means xss =
