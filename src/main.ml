@@ -104,7 +104,7 @@ let () =
     applies the search strategies in order until we either find a repair or run
     out.  Process will abort if it receives an unrecognized search
     strategies. *)
-let process base ext rep =
+let process base (ext : string) rep =
   (* load the rep, either from a cache or from source *)
   rep#load base;
   rep#debug_info ();
@@ -121,52 +121,50 @@ let process base ext rep =
   (* Apply the requested search strategies in order. Typically there
    * is only one, but they can be chained. *)
   try
-    begin
-      match !search_strategy with
-      | "dist" | "distributed" | "dist-net" | "net" | "dn" ->
-         Network.distributed_client rep population
-      | "brute" | "brute_force" | "bf" ->
-         Search.brute_force_1 rep population
-      | "geom" | "geometric" ->
-         Search.geometric rep population
-      | "ww" | "ww_adaptive" | "adaptive" ->
-         Search.ww_adaptive_1 rep population
-      | "ww_prodiv" | "prodiv" | "pd-exploit" ->
-         Search.pd_exploit rep population
-      | "mjk_prodiv" | "pd" | "pd-explore" ->
-         Search.pd_explore rep population
-      | "ga" | "gp" | "genetic" ->
-         if not (GPPopulation.sanity (rep#variable_length)) then
-           abort "Incompatable representation and crossover types, aborting";
-         Search.genetic_algorithm rep population
-      | "gasga" ->
-         if not (GPPopulation.sanity (rep#variable_length)) then
-           abort "Incompatable representation and crossover types, aborting";
-         Search.gasga rep population
-      | "ssga" | "steady-state" ->
-         if not (GPPopulation.sanity (rep#variable_length)) then
-           abort "Incompatable representation and crossover types, aborting";
-         Search.steady_state_ga rep population
-      | "multiopt" | "ngsa_ii" ->
-         Multiopt.ngsa_ii rep population
-      | "mutrb" | "neut" | "neutral" ->
-         Search.neutral_variants rep
-      | "oracle" ->
-         assert(!oracle_genome <> "");
-         Search.oracle_search rep !oracle_genome;
-      | "pd-oracle" ->
-         assert(!oracle_genome <> "");
-         Search.pd_oracle_search rep !oracle_genome;
-      | "seq" ->
-         assert(!oracle_genome <> "");
-         Search.sequence rep !oracle_genome
-      | "walk" | "neutral_walk" ->
-         Search.neutral_walk rep population
-      | x -> abort "unrecognized search strategy: %s\n" x
-    end;
-    (* If we had found a repair, we could have noted it earlier and
-     * thrown an exception. *)
-    debug "\nNo repair found.\n"
+    match !search_strategy with
+    | "dist" | "distributed" | "dist-net" | "net" | "dn" ->
+       Network.distributed_client rep population
+    | "brute" | "brute_force" | "bf" ->
+       Search.brute_force_1 rep population
+    | "geom" | "geometric" ->
+       Search.geometric rep population
+    | "ww" | "ww_adaptive" | "adaptive" ->
+       Search.ww_adaptive_1 rep population
+    | "ww_prodiv" | "prodiv" | "pd-exploit" ->
+       Search.pd_exploit rep population
+    | "mjk_prodiv" | "pd" | "pd-explore" ->
+       Search.pd_explore rep population
+    | "ga" | "gp" | "genetic" ->
+       if not (GPPopulation.sanity (rep#variable_length)) then
+         abort "Incompatable representation and crossover types, aborting";
+       Search.genetic_algorithm rep population
+    | "gasga" ->
+       if not (GPPopulation.sanity (rep#variable_length)) then
+         abort "Incompatable representation and crossover types, aborting";
+       Search.gasga rep population
+    | "ssga" | "steady-state" ->
+       if not (GPPopulation.sanity (rep#variable_length)) then
+         abort "Incompatable representation and crossover types, aborting";
+       Search.steady_state_ga rep population
+    | "multiopt" | "ngsa_ii" ->
+       Multiopt.ngsa_ii rep population
+    | "mutrb" | "neut" | "neutral" ->
+       Search.neutral_variants rep
+    | "oracle" ->
+       assert(!oracle_genome <> "");
+       Search.oracle_search rep !oracle_genome;
+    | "pd-oracle" ->
+       assert(!oracle_genome <> "");
+       Search.pd_oracle_search rep !oracle_genome;
+    | "seq" ->
+       assert(!oracle_genome <> "");
+       Search.sequence rep !oracle_genome
+    | "walk" | "neutral_walk" ->
+       Search.neutral_walk rep population
+    | x -> abort "unrecognized search strategy: %s\n" x
+             (* If we had found a repair, we could have noted it earlier and
+              * thrown an exception. *)
+             debug "\nNo repair found.\n"
   with Search.Found_repair(rep) -> ()
 
 (***********************************************************************
