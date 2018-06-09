@@ -404,20 +404,17 @@ let negate (p : polarity) : polarity =
 (** Consistency checks for inferred types *)
 let pair_or_var (t : tau) =
   match find t with
-  | Pair _ -> true
-  | Var _ -> true
+  | Pair _  | Var _ -> true
   | _ -> false
 
 let ref_or_var (t : tau) =
   match find t with
-  | Ref _ -> true
-  | Var _ -> true
+  | Ref _  | Var _ -> true
   | _ -> false
 
 let fun_or_var (t : tau) =
   match find t with
-  | Fun _ -> true
-  | Var _ -> true
+  | Fun _ | Var _ -> true
   |  _ -> false
 
 (** Apply [f] structurally down [t]. Guaranteed to terminate, even if [t]
