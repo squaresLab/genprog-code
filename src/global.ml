@@ -67,17 +67,17 @@ let debug ?force_gui:(force_gui=false) fmt =
 (** much like debug, but with ABORT prepending to the message and exits 1 when
     done *)
 let abort fmt =
-  let k result = begin
+  let k result =
     if not !gui then begin
-      output_string !debug_out result ;
-      output_string stdout result ;
-      flush stdout ;
-      flush !debug_out;
-    end;
+        output_string !debug_out result ;
+        output_string stdout result ;
+        flush stdout ;
+        flush !debug_out;
+      end;
     exit 1
-  end in
-    debug "\nABORT:\n\n" ;
-    Printf.kprintf k fmt
+  in
+  debug "\nABORT:\n\n" ;
+  Printf.ksprintf k fmt
 
 (** {6 Subprocess Management} *)
 
