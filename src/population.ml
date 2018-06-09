@@ -140,50 +140,59 @@ module GPPopulation =
          if out_channel = None then close_out fout
       | _ -> failwith ("unknown population output format: " ^ !output_format)
 
-  (** {b deserialize} deserializes a population from disk, to be used as
-      incoming_pop.  The incoming variant is assumed to have loaded the global
-      state (which CLG doesn't love so she might change it).  Remaining variants
-      are read in individually, using only their own local information *)
-  (* deserialize can fail if the file does not conform to the expected format
-     for Marshal or if there is a version mismatch between the population module
-     that wrote the binary file and this one (that is loading it). *)
-  let deserialize ?in_channel filename original =
-    (* the original should have loaded the global state *)
-    let fin =
-      match in_channel with
-        Some(v) -> v
-      | None -> open_in_bin filename in
-    let pop = ref [] in
+    (** {b deserialize} deserializes a population from disk, to be used as
+        incoming_pop. The incoming variant is assumed to have loaded the global
+        state (which CLG doesn't love so she might change it). Remaining
+        variants are read in individually, using only their own local
+        information *)
+    (* deserialize can fail if the file does not conform to the expected format
+       for Marshal or if there is a version mismatch between the population
+       module that wrote the binary file and this one (that is loading it). *)
+    let deserialize ?in_channel filename original =
+      (* the original should have loaded the global state *)
+      let fin =
+        match in_channel with
+        | Some(v) -> v
+        | None -> open_in_bin filename
+      in
+      let pop = ref [] in
       try
         if !output_format = "txt" then
           failwith "txt format, skipping binary attempt";
         let version = Marshal.from_channel fin in
-          if version <> population_version then begin
-            debug "population: %s has old version: %s\n" filename version;
+        if version <> population_version then
+          begin
+            debug "population: %s has different version: %s\n" filename version;
             failwith "version mismatch"
-          end ;
-          let attempt = ref 1 in
-          try
-            while true do
-              debug "attempt %d\n" !attempt; incr attempt;
-              let rep' = original#copy () in
-                rep'#deserialize ?in_channel:(Some(fin)) ?global_info:(None) filename;
-                pop := rep'::!pop
-            done; !pop
-          with End_of_file -> !pop
-      with _ -> begin
-        close_in fin;
-        pop := [];
+          end;
+        let attempt = ref 1 in
         try
-          let individuals = get_lines filename in
-            liter
-              (fun genome ->
-                let copy = original#copy() in
-                  copy#load_genome_from_string genome;
-                  pop := copy :: !pop
-              ) individuals; !pop
+          while true do
+            debug "attempt %d\n" !attempt;
+            incr attempt;
+            let rep' = original#copy () in
+            let channel = Some (fin) in
+            let info = None in
+            rep'#deserialize ?in_channel:channel ?global_info:info filename;
+            pop := rep' :: !pop
+          done;
+          !pop
         with End_of_file -> !pop
-      end
+      with _ ->
+        begin
+          close_in fin;
+          pop := [];
+          try
+            let individuals = get_lines filename in
+            let load_genome genome =
+              let copy = original#copy() in
+              copy#load_genome_from_string genome;
+              pop := copy :: !pop
+            in
+            List.iter load_genome individuals;
+            !pop
+          with End_of_file -> !pop
+        end
 
   (*** Tournament Selection ***)
 
