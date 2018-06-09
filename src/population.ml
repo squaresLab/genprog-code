@@ -258,36 +258,24 @@ module GPPopulation =
     let first_half,second_half = split_nth wp point in
     let c_one = original#copy () in
     let c_two = original#copy () in
-    let h11, h12 =
-      List.partition
-        (fun edit ->
-          match edit with
-          | Delete(num)
-          | Append(num, _)
-          | Swap(num,_)
-          | Replace(num,_) -> List.mem num first_half
-          | _ ->
-            abort "unexpected edit in history in patch_old_behavior crossover")
-        h1
+    let split_history history =
+      let split = function
+        | Delete (num) | Append (num, _) | Swap (num, _) | Replace (num, _) ->
+           List.mem num first_half
+        | _ ->
+           abort ("unexpected edit in history in patch_old_behavior crossover")
+      in
+      List.partition split history
     in
-    let h21, h22 =
-      List.partition
-        (fun edit ->
-          match edit with
-          | Delete(num) | Append(num, _)
-          | Swap(num,_) | Replace(num,_)  ->
-            List.mem num first_half
-          | _ ->
-            abort "unexpected edit in history in patch_old_behavior crossover")
-        h2
-    in
+    let h11, h12 = split_history h1 in
+    let h21, h22 = split_history h2 in
     let new_h1 = lmap (c_one#history_element_to_str) (h11 @ h22) in
     let new_h2 = lmap (c_two#history_element_to_str) (h21 @ h12) in
     let new_h1 = lfoldl (fun acc str -> acc^str^" ") "" new_h1 in
     let new_h2 = lfoldl (fun acc str -> acc^str^" ") "" new_h2 in
       c_one#load_genome_from_string new_h1 ;
       c_two#load_genome_from_string new_h2 ;
-      [ c_one ; c_two ]
+      [c_one ; c_two ]
 
   (* Patch Subset Crossover; works on all representations even though it was
      originally designed just for cilrep patch *)
