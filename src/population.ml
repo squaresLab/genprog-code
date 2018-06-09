@@ -306,34 +306,33 @@ module GPPopulation =
         : (('a,'b) representation) list =
       let child1 = original#copy () in
       let child2 = original#copy () in
-      let point1,point2 =
-        if test <> 0 then test,test
-        else
+      let point1, point2 =
+        if test <> 0 then test, test else
           (* this is a little squirrly.  available_crossover_points returns a
              set of legal crossover points along the genome list and a function
              to combine the variant's legal crossover points with another
              variant's legal crossover points *)
-          let legal1,interfun1 = variant1#available_crossover_points () in
-          let legal2,interfun2 = variant2#available_crossover_points () in
+          let legal1, interfun1 = variant1#available_crossover_points () in
+          let legal2, interfun2 = variant2#available_crossover_points () in
           let legal1' = interfun1 legal1 legal2 in
           let legal2' = interfun2 legal2 legal1 in
           (* if variants are of stable length, we only need to choose one point
            *)
           if not variant1#variable_length then
             let rand = List.hd (random_order legal1') in
-            rand,rand
+            rand, rand
           else
             let rand1 = List.hd (random_order legal1') in
             let rand2 = List.hd (random_order legal2') in
-            rand1,rand2
+            rand1, rand2
       in
-      let g1a,g1b = split_nth (variant1#get_genome()) point1 in
-      let g2a,g2b = split_nth (variant2#get_genome()) point2 in
-      child1#set_genome (g1a@g2b);
+      let g1a, g1b = split_nth (variant1#get_genome()) point1 in
+      let g2a, g2b = split_nth (variant2#get_genome()) point2 in
+      child1#set_genome (g1a @ g2b);
       (* do we care that the history info is destroyed for patch representation
          here? *)
-      child2#set_genome (g2a@g1b);
-      [child1;child2]
+      child2#set_genome (g2a @ g1b);
+      [child1; child2]
 
     (** do_cross original variant1 variant2 performs crossover on variant1 and
        variant2, producing two children [child1;child2] as a result.  Dispatches
