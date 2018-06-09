@@ -271,12 +271,14 @@ let main () = begin
     (* Bookkeeping information to print out whenever we're done ... *)
     Sys.catch_break true;
     let finish () =
-      let tc = (Rep.num_test_evals_ignore_cache ()) in
-      debug "\nVariant Test Case Queries: %d\n" tc;
-      let num_evals = ((float tc) /. (float (!pos_tests + !neg_tests))) in
+      let test_case_queries = Rep.num_test_evals_ignore_cache () in
+      let num_evals =
+        (float test_case_queries) /. (float (!pos_tests + !neg_tests)) in
+      let num_seconds = (Unix.gettimeofday ()) -. time_at_start in
+
+      debug "\nVariant Test Case Queries: %d\n" test_case_queries;
       debug "\"Test Suite Evaluations\": %g\n\n" num_evals;
       debug "Compile Failures: %d\n" !Rep.compile_failures;
-      let num_seconds = ((Unix.gettimeofday ()) -. time_at_start) in
       debug "Wall-Clock Seconds Elapsed: %g\n" num_seconds;
       if not !gui then
         Stats2.print !debug_out "Program Repair Prototype (v2)";
