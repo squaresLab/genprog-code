@@ -230,42 +230,22 @@ module GPPopulation =
       in
       select_one ()
 
-  (** {b tournament_selection} variant_comparison_function population
-      desired_pop_size uses tournament selction to select desired_pop_size
-      variants from population using variant_comparison_function to compare
-      individuals, if specified, and variant fitness if not.  Returns a subset
-      of the population.  *)
-  let tournament_selection
-      ?(compare_func=compare_fitness)
-      (population : ('a,'b) t)
-      desired =
-    assert ( desired >= 0 ) ;
-    lmap (fun _ -> one_tournament ~compare_func population) (1 -- desired)
+    (** {b tournament_selection} variant_comparison_function population
+        desired_pop_size uses tournament selction to select desired_pop_size
+        variants from population using variant_comparison_function to compare
+        individuals, if specified, and variant fitness if not.  Returns a subset
+        of the population. *)
+    let tournament_selection ?(compare_func=compare_fitness)
+          (population : ('a,'b) t) desired =
+      assert (desired >= 0);
+      lmap (fun _ -> one_tournament ~compare_func population) (1 -- desired)
 
-  (** {b Selection} population desired_size dispatches to the appropriate
-      selection function. Currently we have only tournament selection implemented,
-      but if/we we add others we can choose between them here *)
-  let selection ?(compare_func=compare_fitness) population desired =
-    tournament_selection ~compare_func population desired
+    (** {b Selection} population desired_size dispatches to the appropriate
+        selection function. Currently we have only tournament selection
+        implemented, but if/we we add others we can choose between them here *)
+    let selection ?(compare_func=compare_fitness) population desired =
+      tournament_selection ~compare_func population desired
 
-  (** Crossover is an operation on more than one variant, which is why it
-      appears here.  We currently have one-point crossover implemented on
-      variants of both stable and variable length, patch_subset_crossover, which
-      is something like uniform crossover (but which works on all
-      representations now, not just cilRep patch) and "ast_old_behavior", which
-      Claire hasn't fixed yet.  The nitty-gritty of how to combine
-      representation genomes to accomplish crossover has been mostly moved to
-      the representation classes, so this implementation doesn't know much about
-      particular genomes.  Crossback implements one-point between variants and
-      the original. *)
-  (* this implements the old AST/WP crossover behavior, typically intended to be
-     used on the patch representation.  I don't like keeping it around, since
-     the point of refactoring is to decouple the evolutionary behavior from the
-     representation.  I'm still thinking about it *)
-  (* this can fail if the edit histories contain unexpected elements, such as
-     crossover, or if load_genome_from_string fails (which is likely, since it's
-     not implemented across the board, which is why I'm mentioning it in this
-     comment) *)
   let crossover_patch_old_behavior ?(test = 0)
       (original :('a,'b) Rep.representation)
       (variant1 :('a,'b) Rep.representation)
