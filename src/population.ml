@@ -84,57 +84,61 @@ let () =
 let population_version = "1"
 
 module GPPopulation =
-struct
+  struct
 
-  type ('a,'b) individual = ('a,'b) Rep.representation
-  type ('a,'b) t = ('a,'b) individual list
+    type ('a,'b) individual = ('a,'b) Rep.representation
+    type ('a,'b) t = ('a,'b) individual list
 
-  let sanity variable_length =
-    match !crossover with
-    | "flat" | "flatten"
-    | "one" | "patch-one-point" | "back" -> true
-    | "patch" | "subset"
-    | "uniform" | "patch-old" -> variable_length
-    | x -> abort  "unknown --crossover %s\n" x
+    let sanity variable_length =
+      match !crossover with
+      | "flat" | "flatten" | "one" | "patch-one-point" | "back" -> true
+      | "patch" | "subset" | "uniform" | "patch-old" -> variable_length
+      | x -> abort "unknown --crossover %s\n" x
 
-  (** {b generate} generates a population.  Generate_function generates a new
-      variant.  incoming is the incoming population.  Size is the desired
-      population size *)
-  let rec generate incoming generate_function size =
-    if (llen incoming) < size then begin
-      let individual = generate_function () in
+    (** {b generate} generates a population.  Generate_function generates a new
+        variant.  incoming is the incoming population.  Size is the desired
+        population size *)
+    let rec generate incoming generate_function size =
+      if (llen incoming) < size then
+        let individual = generate_function () in
         generate (individual :: incoming) generate_function size
-    end else incoming
+      else incoming
 
-  (** map population map_function applies map_function to every individual on
-      the population and returns the result *)
-  let map population map_function = lmap map_function population
-  let iterate population iterate_function = liter iterate_function population
+    (** map population map_function applies map_function to every individual on
+        the population and returns the result *)
+    let map population map_function = lmap map_function population
+    let iterate population iterate_function = liter iterate_function population
 
-  (** {b serialize} serializes a population to disk.  The first variant is
-      optionally instructed to print out the global information necessary for a
-      collection of representations.  The remaining variants print out only
-      their variant-specific local information *)
-  let serialize ?out_channel (population : ('a,'b) t) (filename : string) =
-    match !output_format with
-      "bin" | "binary" ->
-        let fout =
-          match out_channel with
-            Some(v) -> v
-          | None -> open_out_bin filename
-        in
-          Marshal.to_channel fout (population_version) [] ;
-          liter (fun variant -> variant#serialize ?out_channel:(Some(fout)) ?global_info:(Some(false)) filename) population;
-          if out_channel = None then close_out fout
-    | "txt" ->
-      debug "serializing population to txt; ?out_channel ignored\n";
-      let fout = open_out filename in
-        liter (fun variant ->
-          let name = variant#name () in
-            output_string fout (name^"\n"))
-          population;
-        if out_channel = None then close_out fout
-    | _ -> failwith ("unknown population output format: " ^ !output_format)
+    (** {b serialize} serializes a population to disk.  The first variant is
+        optionally instructed to print out the global information necessary for
+        a collection of representations.  The remaining variants print out only
+        their variant-specific local information *)
+    let serialize ?out_channel (population : ('a,'b) t) filename =
+      match !output_format with
+      | "bin" | "binary" ->
+         let fout =
+           match out_channel with
+           | Some(v) -> v
+           | None -> open_out_bin filename
+         in
+         Marshal.to_channel fout population_version [] ;
+         let serialize variant =
+           let channel = Some (fout) in
+           let info = Some (false) in
+           variant#serialize ?out_channel:channel ?global_info:info filename
+         in
+         List.iter serialize population;
+         if out_channel = None then close_out fout
+      | "txt" ->
+         debug "serializing population to txt; ?out_channel ignored\n";
+         let fout = open_out filename in
+         let serialize variant =
+           let name = variant#name () in
+           output_string fout (name ^ "\n")
+         in
+         List.iter serialize population;
+         if out_channel = None then close_out fout
+      | _ -> failwith ("unknown population output format: " ^ !output_format)
 
   (** {b deserialize} deserializes a population from disk, to be used as
       incoming_pop.  The incoming variant is assumed to have loaded the global
