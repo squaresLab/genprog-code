@@ -194,12 +194,12 @@ module GPPopulation =
           with End_of_file -> !pop
         end
 
-  (*** Tournament Selection ***)
+    (*** Tournament Selection ***)
 
-  (** [compare_fitness x y] compares the fitness of the given individuals. It is
-      used as the default comparison function for tournament selection. *)
-  let compare_fitness (i : ('a,'b) individual) (i' : ('a,'b) individual) =
-    compare (get_opt (i#fitness ())) (get_opt (i'#fitness ()))
+    (** [compare_fitness x y] compares the fitness of the given individuals. It
+        is used as the default comparison function for tournament selection. *)
+    let compare_fitness (i : ('a,'b) individual) (i' : ('a,'b) individual) =
+      compare (i#fitness () |> get_opt) (i'#fitness () |> get_opt)
 
   (** [one_tournament compare_func population] conducts a single tournament to
       select a variant from the population. The [compare_func] should take two
