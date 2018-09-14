@@ -10,7 +10,7 @@ GenProg: Evolutionary Program Repair
 
 - Author: Claire Le Goues
 - Modified by: Jeremy Lacomis
-- Contact: <legoues@cs.cmu.edu>, <jlacomis@cmu.edu>
+- Contact: <clegoues@cs.cmu.edu>, <jlacomis@cmu.edu>
 - Date Created: July 11, 2008
 - Date Modified: June 3, 2017
 
