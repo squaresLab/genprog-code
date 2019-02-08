@@ -1363,6 +1363,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       (e.g., [Unix.fork]), or if any of its own Unix system calls (such as
       [create_process] or [wait]) fail *)
   method test_cases tests =
+    self#updated () ; 
     if !fitness_in_parallel <= 1 || (List.length tests) < 2 then 
       (* If we're not going to run them in parallel, then just run them
        * sequentially in turn. *) 
