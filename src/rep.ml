@@ -1159,8 +1159,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
           abort "cachingRepresentation: sanity check failed (compilation)\n" 
         end ; 
         let tests =
-          (lmap (fun i -> (Positive i, (fun b -> not b))) (1 -- !pos_tests))
-            @ (lmap (fun i -> (Negative i, (fun b -> b))) (1 -- !neg_tests))
+          (lmap (fun i -> (Negative i, (fun b -> b))) (1 -- !neg_tests))
+            @ (lmap (fun i -> (Positive i, (fun b -> not b))) (1 -- !pos_tests))
         in
           liter (fun (t, failed) ->
             let name = test_name t in
