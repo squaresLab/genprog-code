@@ -1363,7 +1363,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       (e.g., [Unix.fork]), or if any of its own Unix system calls (such as
       [create_process] or [wait]) fail *)
   method test_cases tests =
-    self#updated () ; 
     if !fitness_in_parallel <= 1 || (List.length tests) < 2 then 
       (* If we're not going to run them in parallel, then just run them
        * sequentially in turn. *) 
@@ -1700,8 +1699,10 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
             (* first, maybe we've reached the max number of evals *)
             if !num_fitness_samples <= count then
               let result = self#internal_check_test_cache test in
-                raise (Test_Result (get_opt result))
-            else
+              match result with
+              | Some(r) -> raise (Test_Result r)
+              | None -> ()
+              else
               (* second, maybe we'll get lucky with the persistent cache *) 
                 match self#internal_check_test_cache ~next test with
                 | Some(x,f) when count < (TestMap.find test (fst eval_count)) ->
