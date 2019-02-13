@@ -158,10 +158,17 @@ exception Maximum_evals of int
 exception Found_repair of string
 
 (**/**)
-let random atom_set = 
-  let elts = List.rev (List.rev_map fst (WeightSet.elements atom_set)) in 
-  let size = List.length elts in 
-    List.nth elts (Random.int size) 
+let random atom_set =
+  let elts = List.rev (List.rev_map fst (WeightSet.elements atom_set)) in
+  let size = List.length elts in
+  let selected_element =
+    try
+      Random.int size
+    with exn ->
+      debug "search: Error selecting random element. Size is %d\n" size;
+      raise exn
+  in
+  List.nth elts selected_element
 (**/**)
 
 (* What should we do if we encounter a true repair? *)
