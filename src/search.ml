@@ -371,7 +371,7 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
     let atom_mutate () = (* stmt-level mutation *)
       let mutations = result#available_mutations x in
         if (llen mutations) > 0 then begin
-          match fst (choose_one_weighted mutations) with 
+          match fst (choose_one_weighted mutations) with
           | Delete_mut -> result#delete x
           | Append_mut ->
             let allowed = variant#append_sources x in
@@ -383,14 +383,14 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
               result#swap x swapwith
           | Replace_mut ->
             let allowed = variant#replace_sources x in
-            let replacewith = random allowed in 
+            let replacewith = random allowed in
               result#replace x replacewith
-          | Template_mut(str) -> 
+          | Template_mut(str) ->
             let templates =
-              variant#template_available_mutations str x 
+              variant#template_available_mutations str x
             in
             let fillins,_ = choose_one_weighted templates
-            in 
+            in
               result#apply_template str fillins
           | Lase_Template_mut ->
             let allowed =
