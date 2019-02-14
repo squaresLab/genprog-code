@@ -2025,8 +2025,8 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   method template_available_mutations str location_id =  []
 
   method private sources locations =
-    let add_source weightset = fun (i, w) -> WeightSet.add (i, w) weightset in
-    lfoldl add_source (WeightSet.empty) locations
+    let add_source weightset elem = WeightSet.add elem weightset in
+    lfoldl add_source WeightSet.empty locations
 
   method append_sources atom_id =
     self#sources !fix_localization
