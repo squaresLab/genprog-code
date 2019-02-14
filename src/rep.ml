@@ -2022,28 +2022,25 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     if template_file <> "" then
       templates := true
 
-  method template_available_mutations str location_id =  [] 
+  method template_available_mutations str location_id =  []
 
-  method append_sources x = 
-    lfoldl
-      (fun weightset ->
-        fun (i,w) ->
-          WeightSet.add (i,w) weightset) (WeightSet.empty) !fix_localization
+  method private sources locations =
+    let add_source weightset = fun (i, w) -> WeightSet.add (i, w) weightset in
+    lfoldl add_source (WeightSet.empty) locations
 
-  method swap_sources x = 
-    lfoldl
-      (fun weightset ->
-        fun (i,w) ->
-          WeightSet.add (i,w) weightset)
-      (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !fault_localization)
+  method append_sources atom_id =
+    self#sources !fix_localization
 
-  method replace_sources x =
-    lfoldl
-      (fun weightset ->
-        fun (i,w) ->
-          WeightSet.add (i,w) weightset)
-      (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !fix_localization)
-  (**/**)      
+  method swap_sources atom_id =
+    let different_ids (id, _) = id <> atom_id in
+    let locations = lfilt different_ids !fault_localization in
+    self#sources locations
+
+  method replace_sources atom_id =
+    let different_ids (id, _) = id <> atom_id in
+    let locations = lfilt different_ids !fix_localization in
+    self#sources locations
+  (**/**)
 
   (***********************************)
   (* No Subatoms (subclasses can override) *)
