@@ -158,10 +158,22 @@ exception Maximum_evals of int
 exception Found_repair of string
 
 (**/**)
+	(** NOTE FROM PDREITER --- the following is a workaround 
+	    in scenario where elts is empty => causes an abort with
+		List.nth elts (Random.int size)
+		in following method random atom_set
+	**)
+let isnotempty atom_set = 
+  let elts = List.rev (List.rev_map fst (WeightSet.elements atom_set)) in 
+  let size = List.length elts in 
+    size > 0
+
 let random atom_set = 
   let elts = List.rev (List.rev_map fst (WeightSet.elements atom_set)) in 
   let size = List.length elts in 
     List.nth elts (Random.int size) 
+
+
 (**/**)
 
 (* What should we do if we encounter a true repair? *)
@@ -375,16 +387,22 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
           | Delete_mut -> result#delete x
           | Append_mut ->
             let allowed = variant#append_sources x in
-            let after = random allowed in
-              result#append x after
+			  if isnotempty allowed then begin
+                 let after = random allowed in
+                   result#append x after
+			  end
           | Swap_mut ->
             let allowed = variant#swap_sources x in
-            let swapwith = random allowed in
-              result#swap x swapwith
+			  if isnotempty allowed then begin
+                 let swapwith = random allowed in
+                   result#swap x swapwith
+			  end
           | Replace_mut ->
             let allowed = variant#replace_sources x in
-            let replacewith = random allowed in 
-              result#replace x replacewith
+			  if isnotempty allowed then begin
+                 let replacewith = random allowed in 
+                   result#replace x replacewith
+			  end
           | Template_mut(str) -> 
             let templates =
               variant#template_available_mutations str x 
