@@ -158,11 +158,11 @@ exception Maximum_evals of int
 exception Found_repair of string
 
 (**/**)
-	(** NOTE FROM PDREITER --- the following is a workaround 
-	    in scenario where elts is empty => causes an abort with
-		List.nth elts (Random.int size)
-		in following method random atom_set
-	**)
+    (** NOTE FROM PDREITER --- the following is a workaround 
+        in scenario where elts is empty => causes an abort with
+        List.nth elts (Random.int size)
+        in following method random atom_set
+    **)
 let isnotempty atom_set = 
   let elts = List.rev (List.rev_map fst (WeightSet.elements atom_set)) in 
   let size = List.length elts in 
@@ -387,22 +387,22 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
           | Delete_mut -> result#delete x
           | Append_mut ->
             let allowed = variant#append_sources x in
-			  if isnotempty allowed then begin
+              if isnotempty allowed then begin
                  let after = random allowed in
                    result#append x after
-			  end
+              end
           | Swap_mut ->
             let allowed = variant#swap_sources x in
-			  if isnotempty allowed then begin
+              if isnotempty allowed then begin
                  let swapwith = random allowed in
                    result#swap x swapwith
-			  end
+              end
           | Replace_mut ->
             let allowed = variant#replace_sources x in
-			  if isnotempty allowed then begin
+              if isnotempty allowed then begin
                  let replacewith = random allowed in 
                    result#replace x replacewith
-			  end
+              end
           | Template_mut(str) -> 
             let templates =
               variant#template_available_mutations str x 
@@ -414,8 +414,8 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
             let allowed =
               StringMap.fold (fun n _ ns -> n :: ns) Lasetemplates.templates []
             in
-            let name = List.hd (random_order allowed) in
-              result#lase_template name
+             let name = List.hd (random_order allowed) in
+               result#lase_template name
         end
     in
     let subatoms = variant#subatoms && !subatom_mutp > 0.0 in
@@ -451,12 +451,16 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
      before each additional mutation. *)
   let rec add_mutation remaining variant =
     let faulty = variant#get_faulty_atoms () in
-    let sid = fst (choose_one_weighted faulty) in
-      mutate_one sid variant ;
-      if remaining > 1 then
-        add_mutation (remaining-1) variant
-      else
+      if List.length faulty = 0 then
         variant
+      else 
+        let sid = fst (choose_one_weighted faulty) in
+          mutate_one sid variant ;
+          if remaining > 1 then
+            add_mutation (remaining-1) variant
+          else
+            variant
+
   in
 
   (* tell whether we should mutate an individual *)
@@ -1053,7 +1057,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
   if(List.length !excluded_edits) > 0 then begin
     deletes := List.filter 
       (fun (Delete(src),_,_) -> 
-      	let app_str = (Printf.sprintf "d(%d)" src) in
+          let app_str = (Printf.sprintf "d(%d)" src) in
           not (List.mem app_str !excluded_edits)) 
       !deletes
   end ;
