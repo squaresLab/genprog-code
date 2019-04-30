@@ -163,10 +163,6 @@ exception Found_repair of string
         List.nth elts (Random.int size)
         in following method random atom_set
     **)
-let isnotempty atom_set = 
-  let elts = List.rev (List.rev_map fst (WeightSet.elements atom_set)) in 
-  let size = List.length elts in 
-    size > 0
 
 let random atom_set = 
   let elts = List.rev (List.rev_map fst (WeightSet.elements atom_set)) in 
@@ -382,40 +378,30 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
   let mutate_one x result =
     let atom_mutate () = (* stmt-level mutation *)
       let mutations = result#available_mutations x in
-        if (llen mutations) > 0 then begin
-          match fst (choose_one_weighted mutations) with 
+      if (llen mutations) > 0 then begin
+          let has_sources sources = not (WeightSet.is_empty (sources x)) in
+          match fst (choose_one_weighted mutations) with
           | Delete_mut -> result#delete x
-          | Append_mut ->
-            let allowed = variant#append_sources x in
-              if isnotempty allowed then begin
-                 let after = random allowed in
-                   result#append x after
-              end
-          | Swap_mut ->
-            let allowed = variant#swap_sources x in
-              if isnotempty allowed then begin
-                 let swapwith = random allowed in
-                   result#swap x swapwith
-              end
-          | Replace_mut ->
-            let allowed = variant#replace_sources x in
-              if isnotempty allowed then begin
-                 let replacewith = random allowed in 
-                   result#replace x replacewith
-              end
-          | Template_mut(str) -> 
+          | Append_mut when has_sources variant#append_sources ->
+            variant#append_sources x |> random |> result#append x
+          | Swap_mut when has_sources variant#swap_sources ->
+            variant#swap_sources x |> random |> result#swap x
+          | Replace_mut when has_sources variant#replace_sources ->
+            variant#replace_sources x |> random |> result#replace x
+          | Template_mut(str) ->
             let templates =
-              variant#template_available_mutations str x 
+              variant#template_available_mutations str x
             in
             let fillins,_ = choose_one_weighted templates
-            in 
-              result#apply_template str fillins
+            in
+            result#apply_template str fillins
           | Lase_Template_mut ->
             let allowed =
               StringMap.fold (fun n _ ns -> n :: ns) Lasetemplates.templates []
             in
-             let name = List.hd (random_order allowed) in
-               result#lase_template name
+            let name = List.hd (random_order allowed) in
+            result#lase_template name
+          | _ -> failwith "No legal mutations"
         end
     in
     let subatoms = variant#subatoms && !subatom_mutp > 0.0 in
