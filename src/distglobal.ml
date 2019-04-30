@@ -58,7 +58,7 @@ exception Send_Failed
     called from something higher-level. *)
 let readall sock size =
   let count = ref 0 in
-  let buffer = String.create (size+1) in
+  let buffer = Bytes.create (size+1) in
   let rec _readall accum =
     let currcount = recv sock buffer 0 size [] in
     count := currcount + !count;
