@@ -52,66 +52,66 @@ exception Send_Failed
 
 (** @param socket socket on which to read; should be ready
     @param message_size integer, number of bytes to read
-    @return bytes read as a string 
+    @return bytes read as a string
     @raise Abort if any system calls fail; usually such failures will be
     caught/handled gracefully by the calling function, as readall is typically
     called from something higher-level. *)
-let readall sock size = 
+let readall sock size =
   let count = ref 0 in
   let buffer = String.create (size+1) in
   let rec _readall accum =
     let currcount = recv sock buffer 0 size [] in
-      count := currcount + !count;
-      if !count <> size then
-        if currcount = 0 then begin
-          sleep 5;
-          _readall accum
-        end
-        else
-          _readall ((String.sub buffer 0 currcount)::accum)
+    count := currcount + !count;
+    if !count <> size then
+      if currcount = 0 then begin
+        sleep 5;
+        _readall accum
+      end
       else
-        ((String.sub buffer 0 currcount)::accum)
+        _readall ((String.sub buffer 0 currcount)::accum)
+    else
+      ((String.sub buffer 0 currcount)::accum)
   in
-    String.concat "" (List.rev (_readall [])) 
+  String.concat "" (List.rev (_readall []))
 
 (** Performs a basic Unix.send with some small error checking.  If the send
     fails in any way, prints the error gracefully but does not abort.
 
     @param socket on which to send
-    @param message string message to send 
+    @param message string message to send
     @param start integer, which byte to start send from
     @param num_bytes number of bytes to send, starting from start
     @param flags flags to pass to Unix.send  *)
 let my_send sock str num1 num2 msglst =
   try
     let x = send sock str num1 num2 msglst in
-      if x <> (num2-num1) then 
-        raise Send_Failed
+    if x <> (num2-num1) then
+      raise Send_Failed
   with e ->
     debug "Error in send: %s\n" (Printexc.to_string e)
 
 (** our send protocol sends the size of the message in number of bytes first (in
     a 4 byte message) and then the full message.  This function reads the number
-    of bytes before dispatching to [readall] to read the rest of the message. 
+    of bytes before dispatching to [readall] to read the rest of the message.
 
     @param socket from which to read
     @return message read from the socket as a string.
- *)
+*)
 let fullread sock =
   let size = my_int_of_string (readall sock 4) in
-    readall sock size
+  readall sock size
 
 (** Our send protocol sends the size of the message in number of bytes first (in
     a 4 byte message) and then the full message.  This function prepends the
     length of the message to the message and then dispatches to [my_send] to
-    send the message. 
+    send the message.
 
     @param socket socket on which to send
     @param message string message to send on socket *)
 let fullsend sock str =
   let len = String.length(str) in
   let newstr = Printf.sprintf "%4d%s" len str in
-    my_send sock newstr 0 (len+4) []
+  my_send sock newstr 0 (len+4) []
 
 (** Performs a select on the socketlist, reads all available data from those
     that return, and spins until all sockets in socketlist have been read from
@@ -125,20 +125,20 @@ let fullsend sock str =
 let rec spin socklist accum =
   try
     match socklist with
-    | [] -> accum 
+    | [] -> accum
     | _ -> begin
-      let ready_for_read, _, _ =
-        Unix.select socklist [] [] (-1.0) 
-      in
-      let lst = 
-        lfoldl (fun acc sock -> (fullread sock) :: acc) [] ready_for_read 
-      in
-      let socklist = 
-        List.filter (fun sock -> not (List.mem sock ready_for_read)) socklist 
-      in
+        let ready_for_read, _, _ =
+          Unix.select socklist [] [] (-1.0)
+        in
+        let lst =
+          lfoldl (fun acc sock -> (fullread sock) :: acc) [] ready_for_read
+        in
+        let socklist =
+          List.filter (fun sock -> not (List.mem sock ready_for_read)) socklist
+        in
         spin socklist (accum @ lst)
-    end 
-  with e -> 
+      end
+  with e ->
     debug "Error in spin: %s\n" (Printexc.to_string e);
     accum
 
@@ -149,10 +149,10 @@ let rec spin socklist accum =
     @param socket socket to which we'd like to connect
     @param addr address to bind to socket *)
 let rec connect_to_sock sock addr =
-  try 
+  try
     connect sock addr;
   with _ ->
-    (* Neal: I used print_endline here instead of debug so the 
+    (* Neal: I used print_endline here instead of debug so the
        repair.debug file doesn't balloon up to astronomical size. *)
     print_endline "Failed to connect to socket. Retrying in 5 seconds.";
     sleep 5;

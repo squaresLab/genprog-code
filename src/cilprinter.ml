@@ -44,57 +44,57 @@ open Rep
 open Pretty
 module E = Errormsg
 
-let width = 32767 
+let width = 32767
 
 let prep_cil_file_for_output cilfile =
-  let cilfile = 
-	if !is_valgrind then begin
-    (* CLG: GIANT HACK FOR VALGRIND BUGS *)
-    {cilfile with globals = 
-          lfilt (fun g -> 
-            match g with 
-            GVarDecl(vinfo,_) ->
-              (match vinfo.vstorage with
-                Extern when vinfo.vname = "__builtin_longjmp" -> false
-              | _ -> true)
-          | _ -> true) cilfile.globals}
-    end else cilfile 
-  in 
-  let cilfile = 
-    {cilfile with globals = 
-        lfilt (fun g ->
-          match g with 
-          | GVarDecl(vi,l) when
-              (not !printCilAsIs && Hashtbl.mem Cil.builtinFunctions vi.vname) -> 
-            (* This prevents the printing of all of those 'compiler built-in'
-             * commented-out function declarations that always appear at the
-             * top of a normal CIL printout file. *) 
-            false
-          | _ -> true) cilfile.globals}
+  let cilfile =
+    if !is_valgrind then begin
+      (* CLG: GIANT HACK FOR VALGRIND BUGS *)
+      {cilfile with globals =
+                      lfilt (fun g ->
+                          match g with
+                            GVarDecl(vinfo,_) ->
+                            (match vinfo.vstorage with
+                               Extern when vinfo.vname = "__builtin_longjmp" -> false
+                             | _ -> true)
+                          | _ -> true) cilfile.globals}
+    end else cilfile
   in
-    cilfile
+  let cilfile =
+    {cilfile with globals =
+                    lfilt (fun g ->
+                        match g with
+                        | GVarDecl(vi,l) when
+                            (not !printCilAsIs && Hashtbl.mem Cil.builtinFunctions vi.vname) ->
+                          (* This prevents the printing of all of those 'compiler built-in'
+                           * commented-out function declarations that always appear at the
+                           * top of a normal CIL printout file. *)
+                          false
+                        | _ -> true) cilfile.globals}
+  in
+  cilfile
 
 
-let output_cil_file (outfile : string) (cilfile : Cil.file) = 
-  let cilfile : Cil.file = prep_cil_file_for_output cilfile in 
+let output_cil_file (outfile : string) (cilfile : Cil.file) =
+  let cilfile : Cil.file = prep_cil_file_for_output cilfile in
   let fout = open_out outfile in
   let old_directive_style = !Cil.lineDirectiveStyle in
-    Cil.lineDirectiveStyle := None ; 
-    Errormsg.hadErrors := false ;
-    begin try
+  Cil.lineDirectiveStyle := None ;
+  Errormsg.hadErrors := false ;
+  begin try
       iterGlobals cilfile (dumpGlobal defaultCilPrinter fout) ;
     with Errormsg.Error ->
       close_out fout ;
       let fout = open_out outfile in
-        Printf.fprintf fout "#error \"Cilprinter.output_cil_file failed!\"\n";
-        flush fout
-    end ;
-    Cil.lineDirectiveStyle := old_directive_style;
-    close_out fout
+      Printf.fprintf fout "#error \"Cilprinter.output_cil_file failed!\"\n";
+      flush fout
+  end ;
+  Cil.lineDirectiveStyle := old_directive_style;
+  close_out fout
 
 (** @param file Cil.file to print to string
     @raise Fail("memory overflow") for very large files, at least in theory. *)
-let output_cil_file_to_string (cilfile : Cil.file) = 
+let output_cil_file_to_string (cilfile : Cil.file) =
   let fname, chan = Filename.open_temp_file "" ".c" in
   output_cil_file fname cilfile;
   close_out chan;
