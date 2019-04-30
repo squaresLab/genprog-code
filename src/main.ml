@@ -279,7 +279,7 @@ let main () = begin
   if real_ext = "txt" && real_ext <> filetype || !Rep.prefix <> "./" then
     Rep.use_subdirs := true;
 
-  match String.lowercase filetype with
+  match String.lowercase_ascii filetype with
   | "ll" | "bl" ->
     Global.extension := ".ll" ;
     process base real_ext ((new Llvmrep.llvmRep) :>('a,'b) Rep.representation)

@@ -843,7 +843,7 @@ let usediff (f1 : Cil.file) (node_info : tree_node IntMap.t)
     List.iter
       (fun line ->
          Scanf.sscanf line "%s %s %s (%d,%d,%d)" (fun the_file fname ea a b c ->
-             let it = match String.lowercase ea with
+             let it = match String.lowercase_ascii ea with
                | "insert" -> Insert(a, num_to_io b, num_to_io c)
                | "move" ->   Move(a, num_to_io b, num_to_io c)
                | "delete" -> Delete(a)
