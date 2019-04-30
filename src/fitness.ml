@@ -37,8 +37,8 @@
  *
  *)
 (** The "fitness" interface enables the computation of a variant.  Available
-    fitness strategies include: 
-    -> test until first failure 
+    fitness strategies include:
+    -> test until first failure
     -> standard "test all"
     -> test a subset of all available
     -> test by calling an outside script and reading in a resulting file *)
@@ -47,7 +47,7 @@ open Printf
 open Global
 open Rep
 
-let negative_test_weight = ref 2.0 
+let negative_test_weight = ref 2.0
 let single_fitness = ref false
 let print_source_name = ref false
 let print_incremental_evals = ref false
@@ -61,110 +61,110 @@ let sample_strategy = ref "variant"
 
 let best_test_rule = ref "1 * test_fail_prob ; 1 * test_fail_count ; -1 * test_pass_count"
 
-let _ = 
+let _ =
   options := !options @ [
-    "--negative-test-weight", Arg.Set_float negative_test_weight, 
-    "X negative tests fitness factor. Default: 2.0";
+      "--negative-test-weight", Arg.Set_float negative_test_weight,
+      "X negative tests fitness factor. Default: 2.0";
 
-    "--single-fitness", Arg.Set single_fitness, " use a single fitness value";
+      "--single-fitness", Arg.Set single_fitness, " use a single fitness value";
 
-    "--sample", Arg.Set_float sample, 
-    "X sample size of positive test cases to use for fitness. Default: 1.0";
+      "--sample", Arg.Set_float sample,
+      "X sample size of positive test cases to use for fitness. Default: 1.0";
 
-    "--samp-strat", Arg.Set_string sample_strategy, 
-    "X Sample strategy: variant, generation, all. Default: variant";
+      "--samp-strat", Arg.Set_string sample_strategy,
+      "X Sample strategy: variant, generation, all. Default: variant";
 
-    "--print-source-name", Arg.Set print_source_name, 
-    " Print the source name(s) of variants with their fitness. Default: false";
+      "--print-source-name", Arg.Set print_source_name,
+      " Print the source name(s) of variants with their fitness. Default: false";
 
-    "--print-incremental-evals", Arg.Set print_incremental_evals, 
-    " Print the number of evals to date along with variants/fitness. Default:false";
+      "--print-incremental-evals", Arg.Set print_incremental_evals,
+      " Print the number of evals to date along with variants/fitness. Default:false";
 
-    "--best-test-rule", Arg.Set_string best_test_rule,
-    "X use X to rank possible tests in adaptive search";
-  ] 
+      "--best-test-rule", Arg.Set_string best_test_rule,
+      "X use X to rank possible tests in adaptive search";
+    ]
 
 exception Test_Failed
 
 (* utilities to help test fitness *)
 
-let get_rest_of_sample sample = 
-  List.filter 
+let get_rest_of_sample sample =
+  List.filter
     (fun test -> not (List.mem test sample)) (1 -- !pos_tests)
 
-let test_one_rep (rep : ('a, 'b) Rep.representation) test_maker tests factor = 
+let test_one_rep (rep : ('a, 'b) Rep.representation) test_maker tests factor =
   let results = rep#test_cases (lmap test_maker tests) in
-    lfoldl 
-      (fun fitness (res,_) -> if res then fitness +. factor else fitness)
-      0.0 results
+  lfoldl
+    (fun fitness (res,_) -> if res then fitness +. factor else fitness)
+    0.0 results
 
 let one_sample_fitness rep sample fac =
-  let neg_fitness = 
-    test_one_rep rep (fun x -> Negative x) (1 -- !neg_tests) fac 
-  in 
-  let pos_fitness = 
-    test_one_rep rep (fun x -> Positive x) sample 1.0 
+  let neg_fitness =
+    test_one_rep rep (fun x -> Negative x) (1 -- !neg_tests) fac
   in
-    neg_fitness +. pos_fitness
+  let pos_fitness =
+    test_one_rep rep (fun x -> Positive x) sample 1.0
+  in
+  neg_fitness +. pos_fitness
 
-let test_sample (rep) (sample) : float * float = 
+let test_sample (rep) (sample) : float * float =
   let sample_size = llen sample in
-  let fac = 
+  let fac =
     (float !pos_tests) *. !negative_test_weight /. (float !neg_tests) in
-  let max_sample_fitness = 
-    (float sample_size) +. ((float !neg_tests) *. fac) 
+  let max_sample_fitness =
+    (float sample_size) +. ((float !neg_tests) *. fac)
   in
   let fitness = one_sample_fitness rep sample fac in
-    if fitness < max_sample_fitness then fitness,fitness
-    else
-      let rest_sample = get_rest_of_sample sample in 
-        fitness, fitness +. (test_one_rep rep (fun x -> Positive x) rest_sample 1.0)
+  if fitness < max_sample_fitness then fitness,fitness
+  else
+    let rest_sample = get_rest_of_sample sample in
+    fitness, fitness +. (test_one_rep rep (fun x -> Positive x) rest_sample 1.0)
 
-let generate_random_sample sample_size = 
+let generate_random_sample sample_size =
   let random_pos = random_order (1 -- !pos_tests) in
-    List.sort compare (first_nth random_pos sample_size)
+  List.sort compare (first_nth random_pos sample_size)
 
 
 (* three different sampling strategies *)
-let test_fitness_variant rep = 
-  (* always sample at least one test case *) 
-  let sample_size = 
-    int_of_float (max ((float !pos_tests) *. !sample) 1.0) 
+let test_fitness_variant rep =
+  (* always sample at least one test case *)
+  let sample_size =
+    int_of_float (max ((float !pos_tests) *. !sample) 1.0)
   in
-    test_sample rep (generate_random_sample sample_size)
+  test_sample rep (generate_random_sample sample_size)
 
 (* storage of info for generation-based sampling *)
-let current_generation = ref (-1) 
+let current_generation = ref (-1)
 let generation_sample = ref []
 
 let test_fitness_generation rep generation =
-  (* always sample at least one test case *) 
-  let sample_size = 
-    int_of_float (max ((float !pos_tests) *. !sample) 1.0) 
+  (* always sample at least one test case *)
+  let sample_size =
+    int_of_float (max ((float !pos_tests) *. !sample) 1.0)
   in
-  let generation_sample = 
+  let generation_sample =
     if generation <> !current_generation then begin
       current_generation := generation;
       generation_sample := generate_random_sample sample_size;
       !generation_sample
     end else !generation_sample
   in
-    test_sample rep generation_sample
+  test_sample rep generation_sample
 
-let test_fitness_all rep = test_sample rep (1 -- !pos_tests) 
+let test_fitness_all rep = test_sample rep (1 -- !pos_tests)
 
 (* get all three, for experiments that compare the amount of noise in different
    random sampling strategies *)
-let test_fitness_all_three (rep) (generation) : (float * float) * ((float * float) * (float * float)) option = 
-  let variant_fitness = test_fitness_variant rep in 
+let test_fitness_all_three (rep) (generation) : (float * float) * ((float * float) * (float * float)) option =
+  let variant_fitness = test_fitness_variant rep in
   let generation_fitness = test_fitness_generation rep generation in
   let all_fitness =  test_fitness_all rep in
-    all_fitness, Some(variant_fitness,generation_fitness)
+  all_fitness, Some(variant_fitness,generation_fitness)
 
 type test_model_1 = {
-    queue : PriorityQueue.t ;
-    get_fitness : test_metrics -> float list
-  }
+  queue : PriorityQueue.t ;
+  get_fitness : test_metrics -> float list
+}
 
 let test_model = ref {
     queue = PriorityQueue.empty ;
@@ -175,7 +175,7 @@ let count_tests_passed allowed (rep :('a,'b) Rep.representation) : int =
   let cpass = ref 0 in
   for i = 1 to !pos_tests do
     let t = Positive i in
-    if allowed t then 
+    if allowed t then
       let res, _ = rep#test_case t in
       if res then incr cpass
   done;
@@ -193,13 +193,13 @@ let count_tests_passed allowed (rep :('a,'b) Rep.representation) : int =
     fails a test case.  This makes less sense for single_fitness, but
     single_fitness being true won't break it.  Does not do sampling since that
     makes no sense. *)
-let test_to_first_failure ?(allowed=fun _ -> true) (rep :('a,'b) Rep.representation) : bool = 
+let test_to_first_failure ?(allowed=fun _ -> true) (rep :('a,'b) Rep.representation) : bool =
   let int_to_test i =
     if i = 0
-      then Single_Fitness
-      else if i <= !neg_tests
-        then Negative (i)
-        else Positive (i - !neg_tests)
+    then Single_Fitness
+    else if i <= !neg_tests
+    then Negative (i)
+    else Positive (i - !neg_tests)
   in
   if PriorityQueue.is_empty !test_model.queue then begin
     (* First run of this function: initialize the model with the user-defined
@@ -223,7 +223,7 @@ let test_to_first_failure ?(allowed=fun _ -> true) (rep :('a,'b) Rep.representat
       | weight :: "*" :: attribute :: rest ->
         let weight = my_float_of_string weight in
         let attr = get_test_attr attribute in
-          interpret ((weight, attr) :: r) rs rest
+        interpret ((weight, attr) :: r) rs rest
       | x :: _ ->
         debug "fitness: ERROR: unknown command %S\n" x;
         failwith "interpret"
@@ -243,11 +243,11 @@ let test_to_first_failure ?(allowed=fun _ -> true) (rep :('a,'b) Rep.representat
         if !single_fitness then [0] else 1 -- (!neg_tests + !pos_tests) in
       List.fold_left
         (fun queue i ->
-          let m = rep#test_metrics (int_to_test i) in
-          PriorityQueue.add ((apply_rules m), i) queue)
+           let m = rep#test_metrics (int_to_test i) in
+           PriorityQueue.add ((apply_rules m), i) queue)
         PriorityQueue.empty ids
     in
-      test_model := { queue = queue; get_fitness = apply_rules }
+    test_model := { queue = queue; get_fitness = apply_rules }
   end;
   let rec run_tests tried pending =
     if PriorityQueue.is_empty pending then
@@ -266,26 +266,26 @@ let test_to_first_failure ?(allowed=fun _ -> true) (rep :('a,'b) Rep.representat
       in
       let tried = PriorityQueue.add (w', i) tried in
       if passed
-        then run_tests tried pending
-        else false, tried, pending
+      then run_tests tried pending
+      else false, tried, pending
     end
   in
   let success, tried, pending =
     run_tests PriorityQueue.empty !test_model.queue
   in
-    rep#cleanup () ;
-    test_model := {!test_model with queue = PriorityQueue.union tried pending} ;
+  rep#cleanup () ;
+  test_model := {!test_model with queue = PriorityQueue.union tried pending} ;
 
-    (* Possible FIXME: should we be thorough and run the skipped tests before
-       officially calling this a pass? *)
-    success
+  (* Possible FIXME: should we be thorough and run the skipped tests before
+     officially calling this a pass? *)
+  success
 
 (** {b test_fitness} generation variant returns true if the variant passes all
     test cases and false otherwise.  Only tests fitness if the rep has not
     cached it.  Postcondition: records fitness in rep, calls rep#cleanup(). May
     implement sampling strategies if specified by the command line.*)
 
-let test_fitness generation (rep : ('a,'b) Rep.representation) = 
+let test_fitness generation (rep : ('a,'b) Rep.representation) =
   (* Find the relative weight of positive and negative tests
    * If negative_test_weight is 2 (the default), then the negative tests are
    * worth twice as much, total, as the positive tests. This is the old
@@ -296,57 +296,57 @@ let test_fitness generation (rep : ('a,'b) Rep.representation) =
     let values, stddevs = col_mean_stddev real_value in
     let n = sqrt (float_of_int (llen real_value)) in
     let b = Buffer.create 255 in
-      Array.iteri (fun i v ->
+    Array.iteri (fun i v ->
         Printf.bprintf b "%g" v ;
         if (classify_float stddevs.(i)) != FP_nan then
           Printf.bprintf b " +/- %g" (1.96 *. stddevs.(i) /. n) ;
         Printf.bprintf b " "
       ) values ;
-      debug ~force_gui:true "\t%s%s\n" (Buffer.contents b) (rep#name ()) ;
-      rep#set_fitness values.(0);
-      rep#cleanup(); res
+    debug ~force_gui:true "\t%s%s\n" (Buffer.contents b) (rep#name ()) ;
+    rep#set_fitness values.(0);
+    rep#cleanup(); res
   end else begin
-    let fac = 
+    let fac =
       (float !pos_tests) *. !negative_test_weight /. (float !neg_tests) in
     let max_fitness = (float !pos_tests) +. ((float !neg_tests) *. fac) in
     let print_info fitness rest =
       (match !sample_strategy,rest with
-        "all",Some((generation_fitness,_),(variant_fitness,_)) when !sample < 1.0 -> 
-          debug ~force_gui:true "\t%3g\t%3g\t%3g %s" 
-            fitness generation_fitness variant_fitness (rep#name ())
-      | _,_ -> 
-        debug ~force_gui:true "\t%3g %s" fitness (rep#name ()));
+         "all",Some((generation_fitness,_),(variant_fitness,_)) when !sample < 1.0 ->
+         debug ~force_gui:true "\t%3g\t%3g\t%3g %s"
+           fitness generation_fitness variant_fitness (rep#name ())
+       | _,_ ->
+         debug ~force_gui:true "\t%3g %s" fitness (rep#name ()));
       if !print_source_name then
         List.iter (fun name -> debug " %s" name) rep#source_name;
       if !print_incremental_evals then
         debug " %g" ((float (Rep.num_test_evals_ignore_cache ())) /.
-                        (float (!pos_tests + !neg_tests)));
+                     (float (!pos_tests + !neg_tests)));
       debug ~force_gui:true "\n"
     in
 
-  (* rest here is the additional data provided by test_fitness_all_three, when
-     applicable *)
-    let (sample_fitness, fitness),rest = 
+    (* rest here is the additional data provided by test_fitness_all_three, when
+       applicable *)
+    let (sample_fitness, fitness),rest =
       match (rep#fitness()) with
       | Some(f) -> (f,f),None
       | None ->
-        if !sample < 1.0 then 
+        if !sample < 1.0 then
           match !sample_strategy with
           | "generation" -> test_fitness_generation rep generation, None
           | "variant" -> test_fitness_variant rep, None
           | "all" -> test_fitness_all_three rep generation
-        else 
+        else
           test_fitness_all rep, None
     in
-      print_info fitness rest;
-      (* debugging for --coverage-per-test
-      if !Rep.coverage_per_test then begin
-        let tests = rep#tests_visiting_edited_atoms () in  
-        debug "coverage_per_test: %d for %s\n" (TestSet.cardinal tests) 
-          (rep#name ()) 
-      end;
-      *) 
-      rep#cleanup();
-      rep#set_fitness sample_fitness;
-      not (fitness < max_fitness)
+    print_info fitness rest;
+    (* debugging for --coverage-per-test
+       if !Rep.coverage_per_test then begin
+       let tests = rep#tests_visiting_edited_atoms () in
+       debug "coverage_per_test: %d for %s\n" (TestSet.cardinal tests)
+        (rep#name ())
+       end;
+    *)
+    rep#cleanup();
+    rep#set_fitness sample_fitness;
+    not (fitness < max_fitness)
   end

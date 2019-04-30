@@ -48,7 +48,7 @@ open Stringrep
 let asmRep_version = "7"
 
 (**/**)
-  
+
 let label_regex = Str.regexp ".*:$"
 let dir_regex = Str.regexp "^[ \t]*\\..*[^:]$"
 let debug_label_regex = Str.regexp "^\\.L[^0-9].*:$"
@@ -60,7 +60,7 @@ struct
 end
 
 module StringTrie = Trie.Make(OrderedChar)
-  
+
 (**/**)
 
 (** @version 7 *)
@@ -86,44 +86,44 @@ class asmRep = object (self : 'self_type)
         String.sub str 0 ((String.length str) - 1)
     in
     labels := StringMap.fold (fun fname (start, stop) labels ->
-      IntMap.add
-        start
-        (lfoldl
-           (fun lines i ->
-             let found_string = (Str.string_match label_regex (!atoms.(i)) 0) in
-             if found_string then
-               (strip (Str.matched_string (!atoms.(i))))::lines
-             else
-               lines
-           ) [] (start -- (stop - 1))
-        ) labels
-    ) !ranges IntMap.empty ;
+        IntMap.add
+          start
+          (lfoldl
+             (fun lines i ->
+                let found_string = (Str.string_match label_regex (!atoms.(i)) 0) in
+                if found_string then
+                  (strip (Str.matched_string (!atoms.(i))))::lines
+                else
+                  lines
+             ) [] (start -- (stop - 1))
+          ) labels
+      ) !ranges IntMap.empty ;
     IntMap.iter (fun fnum flabels ->
-      liter (fun label ->
-        all_labels := (StringSet.add label !all_labels)
-      ) flabels
-    ) !labels ;
+        liter (fun label ->
+            all_labels := (StringSet.add label !all_labels)
+          ) flabels
+      ) !labels ;
     label_tries := IntMap.fold (fun fnum flabels label_tries ->
-      IntMap.add
-        fnum
-        (lfoldl
-           (fun label_trie label ->
-             StringTrie.add (chars_of_string label) true label_trie
-           ) StringTrie.empty flabels
-        ) label_tries
-    ) !labels IntMap.empty ;
+        IntMap.add
+          fnum
+          (lfoldl
+             (fun label_trie label ->
+                StringTrie.add (chars_of_string label) true label_trie
+             ) StringTrie.empty flabels
+          ) label_tries
+      ) !labels IntMap.empty ;
     all_labels_trie :=
       StringSet.fold
-      (fun label all_labels_trie ->
-        StringTrie.add (chars_of_string label) true all_labels_trie
-      ) !all_labels StringTrie.empty ;
+        (fun label all_labels_trie ->
+           StringTrie.add (chars_of_string label) true all_labels_trie
+        ) !all_labels StringTrie.empty ;
 
-  (* Removes directives and debugging labels from the fault space *)
+    (* Removes directives and debugging labels from the fault space *)
   method reduce_search_space _ _ =
     let not_directive_or_debug_label (i, _) =
       let line = self#get i in
       ((not (Str.string_match dir_regex line 0)) &&
-          (not (Str.string_match debug_label_regex line 0)))
+       (not (Str.string_match debug_label_regex line 0)))
     in
     let orig_len = llen !fault_localization in
     fault_localization := lfilt not_directive_or_debug_label !fault_localization;
@@ -131,25 +131,25 @@ class asmRep = object (self : 'self_type)
     let percentage = (1.0 -. ((float_of_int new_len) /. (float_of_int orig_len))) *. 100.0 in
     debug "asmRep: fault space reduced from %d lines to %d lines (%.2f%%)\n" orig_len new_len percentage;
 
-  (* Removes labels and duplicate lines from the fix space *)
+    (* Removes labels and duplicate lines from the fix space *)
   method reduce_fix_space () =
     let orig_len = List.length !fix_localization in
     super#reduce_fix_space ();
     let not_label (i, _) =
-        (not (Str.string_match label_regex (self#get i) 0))
+      (not (Str.string_match label_regex (self#get i) 0))
     in
     fix_localization := lfilt not_label !fix_localization;
-      let new_len = List.length !fix_localization in
-      let percentage = (1.0 -. ((float_of_int new_len) /. (float_of_int orig_len))) *. 100.0 in
-      debug "asmRep: fix space reduced from %d lines to %d lines (%.2f%%)\n" orig_len new_len percentage;
+    let new_len = List.length !fix_localization in
+    let percentage = (1.0 -. ((float_of_int new_len) /. (float_of_int orig_len))) *. 100.0 in
+    debug "asmRep: fix space reduced from %d lines to %d lines (%.2f%%)\n" orig_len new_len percentage;
 
-  method available_mutations mut_id = 
+  method available_mutations mut_id =
     lfilt (fun (mutation,prob) ->
-      match mutation with
-        Delete_mut -> (* Don't delete labels *)
+        match mutation with
+          Delete_mut -> (* Don't delete labels *)
           (not (Str.string_match label_regex (self#get mut_id) 0))
-      | _ -> true
-    ) (super#available_mutations mut_id)
+        | _ -> true
+      ) (super#available_mutations mut_id)
 
   (* Do not allow appends if an instuction references a label that does not exist in this file *)
   method private append_source_gen x =
@@ -157,26 +157,26 @@ class asmRep = object (self : 'self_type)
       let rec helper x =
         match x with
           i::rest ->
-            let prefix = (StringTrie.contains_prefix_of (i::rest) trie) in
-            if (prefix == []) then
-              helper rest
-            else
-              begin
-                let prefix_len = llen prefix in
-                let next_char =
-                  try
-                    List.nth x prefix_len
-                  with _ ->
-                    '\n'
-                in
-                match next_char with
-                | '0' .. '9' | 'a' .. 'z' | 'A' .. 'Z' | '.' | '_' ->
-                   false
-                | _ ->
-                   true
-              end
+          let prefix = (StringTrie.contains_prefix_of (i::rest) trie) in
+          if (prefix == []) then
+            helper rest
+          else
+            begin
+              let prefix_len = llen prefix in
+              let next_char =
+                try
+                  List.nth x prefix_len
+                with _ ->
+                  '\n'
+              in
+              match next_char with
+              | '0' .. '9' | 'a' .. 'z' | 'A' .. 'Z' | '.' | '_' ->
+                false
+              | _ ->
+                true
+            end
         | _ ->
-           false
+          false
       in
       helper (chars_of_string line)
     in
@@ -184,7 +184,7 @@ class asmRep = object (self : 'self_type)
       let trie = IntMap.find file !label_tries in
       contains_label (self#get line) trie
     in
-    let file = self#base_for_atom_id x in    
+    let file = self#base_for_atom_id x in
     let can_append line =
       if contains_label (self#get line) !all_labels_trie then
         (x <> line) && (label_in_file file line)
@@ -195,7 +195,7 @@ class asmRep = object (self : 'self_type)
     let rec gen () =
       match !pending with
       | (i,w)::rest ->
-         pending := rest ;
+        pending := rest ;
         if (can_append i) then Some(i,w) else gen ()
       | [] -> None
     in
@@ -219,5 +219,5 @@ class asmRep = object (self : 'self_type)
         if (can_swap i) then Some(i,w) else gen ()
       | [] -> None
     in
-      gen
+    gen
 end

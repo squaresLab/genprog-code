@@ -102,9 +102,9 @@ let lvalues : (lval,A.lvalue) H.t = H.create 64
 
 let fresh_index : (unit -> int) =
   let count = ref 0 in
-    fun () ->
-      incr count;
-      !count
+  fun () ->
+    incr count;
+    !count
 
 let alloc_names = [
   "malloc";
@@ -135,41 +135,41 @@ let all_functions : fundec list ref = ref []
 
 let is_undefined_fun = function
     Lval (lh, o) ->
-      if isFunctionType (typeOfLval (lh, o))  then
-        match lh with
-            Var v -> v.vstorage = Extern
-          | _ -> false
-      else false
+    if isFunctionType (typeOfLval (lh, o))  then
+      match lh with
+        Var v -> v.vstorage = Extern
+      | _ -> false
+    else false
   | _ -> false
 
 let is_alloc_fun = function
     Lval (lh, o) ->
-      if isFunctionType (typeOfLval (lh, o)) then
-        match lh with
-            Var v -> List.mem v.vname alloc_names
-          | _ -> false
-      else false
+    if isFunctionType (typeOfLval (lh, o)) then
+      match lh with
+        Var v -> List.mem v.vname alloc_names
+      | _ -> false
+    else false
   | _ -> false
 
 let next_alloc = function
     Lval (Var v, o) ->
-      let name = Printf.sprintf "%s@%d" v.vname (fresh_index ())
-      in
-        A.address (A.make_lvalue false name (Some v)) (* check *)
+    let name = Printf.sprintf "%s@%d" v.vname (fresh_index ())
+    in
+    A.address (A.make_lvalue false name (Some v)) (* check *)
   | _ -> raise Bad_return
 
 let is_effect_free_fun = function
     Lval (lh, o) when isFunctionType (typeOfLval (lh, o)) ->
-      begin
-        match lh with
-            Var v ->
-              begin
-                try ("CHECK_" = String.sub v.vname 0 6 ||
-		!callHasNoSideEffects (Lval(lh,o)))
-                with Invalid_argument _ -> false
-              end
-          | _ -> false
-      end
+    begin
+      match lh with
+        Var v ->
+        begin
+          try ("CHECK_" = String.sub v.vname 0 6 ||
+               !callHasNoSideEffects (Lval(lh,o)))
+          with Invalid_argument _ -> false
+        end
+      | _ -> false
+    end
   | _ -> false
 
 
@@ -187,82 +187,82 @@ let analyze_var_decl (v : varinfo ) : A.lvalue =
   with Not_found ->
     let lv = A.make_lvalue false v.vname (Some v)
     in
-      H.add lvalue_hash v lv;
-      lv
+    H.add lvalue_hash v lv;
+    lv
 
 let isFunPtrType (t : typ) : bool =
   match t with
-      TPtr (t, _) -> isFunctionType t
-    | _ -> false
+    TPtr (t, _) -> isFunctionType t
+  | _ -> false
 
 let rec analyze_lval (lv : lval ) : A.lvalue =
   let find_access (l : A.lvalue) (is_var : bool) : A.lvalue =
     match !current_fundec with
-        None -> l
-      | Some f ->
-          let accesses = H.find fun_access_map f in
-            if H.mem accesses lv then l
-            else
-              begin
-                H.add accesses lv (l, is_var);
-                l
-              end in
+      None -> l
+    | Some f ->
+      let accesses = H.find fun_access_map f in
+      if H.mem accesses lv then l
+      else
+        begin
+          H.add accesses lv (l, is_var);
+          l
+        end in
   let result =
     match lv with
-        Var v, _ -> (* instantiate every syntactic occurrence of a function *)
-          let alv =
-            if isFunctionType (typeOfLval lv) then
-              A.instantiate (analyze_var_decl v) (fresh_index ())
-            else analyze_var_decl v
-          in
-            find_access alv true
-      | Mem e, _ ->
-          (* assert (not (isFunctionType(typeOf(e))) ); *)
-          let alv =
-            if !fun_ptrs_as_funs && isFunPtrType (typeOf e) then
-              analyze_expr_as_lval e
-            else A.deref (analyze_expr e)
-          in
-            find_access alv false
+      Var v, _ -> (* instantiate every syntactic occurrence of a function *)
+      let alv =
+        if isFunctionType (typeOfLval lv) then
+          A.instantiate (analyze_var_decl v) (fresh_index ())
+        else analyze_var_decl v
+      in
+      find_access alv true
+    | Mem e, _ ->
+      (* assert (not (isFunctionType(typeOf(e))) ); *)
+      let alv =
+        if !fun_ptrs_as_funs && isFunPtrType (typeOf e) then
+          analyze_expr_as_lval e
+        else A.deref (analyze_expr e)
+      in
+      find_access alv false
   in
-    H.replace lvalues lv result;
-    result
+  H.replace lvalues lv result;
+  result
 and analyze_expr_as_lval (e : exp) : A.lvalue =
   match e with
-      Lval l ->  analyze_lval l
-    | _ -> assert false (* todo -- other kinds of expressions? *)
+    Lval l ->  analyze_lval l
+  | _ -> assert false (* todo -- other kinds of expressions? *)
 and analyze_expr (e : exp ) : A.tau =
   let result =
     match e with
-        Const (CStr s) ->
-          if !model_strings then
-            A.address (A.make_lvalue
-                         false
-                         s
-                         (Some (makeVarinfo false s charConstPtrType)))
-          else A.bottom ()
-      | Const c -> A.bottom ()
-      | Lval l -> A.rvalue (analyze_lval l)
-      | SizeOf _ -> A.bottom ()
-      | SizeOfStr _ -> A.bottom ()
-      | AlignOf _ -> A.bottom ()
-      | UnOp (op, e, t) -> analyze_expr e
-      | BinOp (op, e, e', t) -> A.join (analyze_expr e) (analyze_expr e')
+      Const (CStr s) ->
+      if !model_strings then
+        A.address (A.make_lvalue
+                     false
+                     s
+                     (Some (makeVarinfo false s charConstPtrType)))
+      else A.bottom ()
+    | Const c -> A.bottom ()
+    | Lval l -> A.rvalue (analyze_lval l)
+    | SizeOf _ -> A.bottom ()
+    | SizeOfStr _ -> A.bottom ()
+    | AlignOf _ -> A.bottom ()
+    | UnOp (op, e, t) -> analyze_expr e
+    | BinOp (op, e, e', t) -> A.join (analyze_expr e) (analyze_expr e')
       (*
       | Question (_, e, e', _) -> A.join (analyze_expr e) (analyze_expr e')
-      *) 
-      | CastE (t, e) -> analyze_expr e
-      | AddrOf l ->
-          if !fun_ptrs_as_funs && isFunctionType (typeOfLval l) then
-            A.rvalue (analyze_lval l)
-          else A.address (analyze_lval l)
+      *)
+    | CastE (t, e) -> analyze_expr e
+    | AddrOf l ->
+      if !fun_ptrs_as_funs && isFunctionType (typeOfLval l) then
+        A.rvalue (analyze_lval l)
+      else A.address (analyze_lval l)
           (*
       | AddrOfLabel _ -> failwith "not implemented yet" (* XXX *)
-      *) 
-      | StartOf l -> A.address (analyze_lval l)
-      | AlignOfE _ -> A.bottom ()
-      | SizeOfE _ -> A.bottom ()
- in
+      *)
+    | StartOf l -> A.address (analyze_lval l)
+    | AlignOfE _ -> A.bottom ()
+    | SizeOfE _ -> A.bottom ()
+  in
   H.add expressions e result;
   result
 
@@ -270,80 +270,80 @@ and analyze_expr (e : exp ) : A.tau =
 (* check *)
 let rec analyze_init (i : init ) : A.tau =
   match i with
-      SingleInit e -> analyze_expr e
-    | CompoundInit (t, oi) ->
-        A.join_inits (Golf.list_map (function (_, i) -> analyze_init i) oi)
+    SingleInit e -> analyze_expr e
+  | CompoundInit (t, oi) ->
+    A.join_inits (Golf.list_map (function (_, i) -> analyze_init i) oi)
 
 let analyze_instr (i : instr ) : unit =
   match i with
-      Set (lval, rhs, l) ->
-        A.assign (analyze_lval lval) (analyze_expr rhs)
-    | Call (res, fexpr, actuals, l) ->
-        if not (isFunctionType (typeOf fexpr)) then
-          () (* todo : is this a varargs? *)
-        else if is_alloc_fun fexpr then
+    Set (lval, rhs, l) ->
+    A.assign (analyze_lval lval) (analyze_expr rhs)
+  | Call (res, fexpr, actuals, l) ->
+    if not (isFunctionType (typeOf fexpr)) then
+      () (* todo : is this a varargs? *)
+    else if is_alloc_fun fexpr then
+      begin
+        if !debug then print_string "Found allocation function...\n";
+        match res with
+          Some r -> A.assign (analyze_lval r) (next_alloc fexpr)
+        | None -> ()
+      end
+    else if is_effect_free_fun fexpr then
+      List.iter (fun e -> ignore (analyze_expr e)) actuals
+    else (* todo : check to see if the thing is an undefined function *)
+      let fnres, site =
+        if is_undefined_fun fexpr & !conservative_undefineds then
+          A.apply_undefined (Golf.list_map analyze_expr actuals)
+        else
+          A.apply (analyze_expr fexpr) (Golf.list_map analyze_expr actuals)
+      in
+      begin
+        match res with
+          Some r ->
           begin
-            if !debug then print_string "Found allocation function...\n";
-            match res with
-                Some r -> A.assign (analyze_lval r) (next_alloc fexpr)
-              | None -> ()
+            A.assign_ret site (analyze_lval r) fnres;
+            found_undefined := true;
           end
-        else if is_effect_free_fun fexpr then
-          List.iter (fun e -> ignore (analyze_expr e)) actuals
-        else (* todo : check to see if the thing is an undefined function *)
-          let fnres, site =
-            if is_undefined_fun fexpr & !conservative_undefineds then
-              A.apply_undefined (Golf.list_map analyze_expr actuals)
-            else
-              A.apply (analyze_expr fexpr) (Golf.list_map analyze_expr actuals)
-          in
-            begin
-              match res with
-                  Some r ->
-                    begin
-                      A.assign_ret site (analyze_lval r) fnres;
-                      found_undefined := true;
-                    end
-                | None -> ()
-            end
-    | Asm _ -> ()
+        | None -> ()
+      end
+  | Asm _ -> ()
 
 let rec analyze_stmt (s : stmt ) : unit =
   match s.skind with
-      Instr il -> List.iter analyze_instr il
-    | Return (eo, l) ->
+    Instr il -> List.iter analyze_instr il
+  | Return (eo, l) ->
+    begin
+      match eo with
+        Some e ->
         begin
-          match eo with
-              Some e ->
-                begin
-                  match !current_ret with
-                      Some ret -> A.return ret (analyze_expr e)
-                    | None -> raise Bad_return
-                end
-            | None -> ()
+          match !current_ret with
+            Some ret -> A.return ret (analyze_expr e)
+          | None -> raise Bad_return
         end
-    | Goto (s', l) -> () (* analyze_stmt(!s') *)
+      | None -> ()
+    end
+  | Goto (s', l) -> () (* analyze_stmt(!s') *)
     (*
     | ComputedGoto (e, l) -> ()
-    *) 
-    | If (e, b, b', l) ->
-        (* ignore the expression e; expressions can't be side-effecting *)
-        analyze_block b;
-        analyze_block b'
-    | Switch (e, b, sl, l) ->
-        analyze_block b;
-        List.iter analyze_stmt sl
-    | Loop (b, l, _, _) -> analyze_block b
-    | Block b -> analyze_block b
-    | TryFinally (b, h, _) ->
-        analyze_block b;
-        analyze_block h
-    | TryExcept (b, (il, _), h, _) ->
-        analyze_block b;
-        List.iter analyze_instr il;
-        analyze_block h
-    | Break l -> ()
-    | Continue l -> ()
+    *)
+  | If (e, b, b', l) ->
+    (* ignore the expression e; expressions can't be side-effecting *)
+    analyze_block b;
+    analyze_block b'
+  | Switch (e, b, sl, l) ->
+    analyze_block b;
+    List.iter analyze_stmt sl
+  | Loop (b, l, _, _) -> analyze_block b
+  | Block b -> analyze_block b
+  | TryFinally (b, h, _) ->
+    analyze_block b;
+    analyze_block h
+  | TryExcept (b, (il, _), h, _) ->
+    analyze_block b;
+    List.iter analyze_instr il;
+    analyze_block h
+  | Break l -> ()
+  | Continue l -> ()
 
 
 and analyze_block (b : block ) : unit =
@@ -354,29 +354,29 @@ let analyze_function (f : fundec ) : unit =
   let ret = A.make_fresh (f.svar.vname ^ "_ret") in
   let formals = Golf.list_map analyze_var_decl f.sformals in
   let newf = A.make_function f.svar.vname formals ret in
-    if !show_progress then
-      Printf.printf "Analyzing function %s\n" f.svar.vname;
-    fun_varinfo_map := F.add f.svar f (!fun_varinfo_map);
-    current_fundec := Some f;
-    H.add fun_access_map f (H.create 8);
-    A.assign oldlv newf;
-    current_ret := Some ret;
-    analyze_block f.sbody
+  if !show_progress then
+    Printf.printf "Analyzing function %s\n" f.svar.vname;
+  fun_varinfo_map := F.add f.svar f (!fun_varinfo_map);
+  current_fundec := Some f;
+  H.add fun_access_map f (H.create 8);
+  A.assign oldlv newf;
+  current_ret := Some ret;
+  analyze_block f.sbody
 
 let analyze_global (g : global ) : unit =
   match g with
-      GVarDecl (v, l) -> () (* ignore (analyze_var_decl(v)) -- no need *)
-    | GVar (v, init, l) ->
-        all_globals := v :: !all_globals;
-        begin
-          match init.init with
-              Some i -> A.assign (analyze_var_decl v) (analyze_init i)
-            | None -> ignore (analyze_var_decl v)
-        end
-    | GFun (f, l) ->
-        all_functions := f :: !all_functions;
-        analyze_function f
-    | _ -> ()
+    GVarDecl (v, l) -> () (* ignore (analyze_var_decl(v)) -- no need *)
+  | GVar (v, init, l) ->
+    all_globals := v :: !all_globals;
+    begin
+      match init.init with
+        Some i -> A.assign (analyze_var_decl v) (analyze_init i)
+      | None -> ignore (analyze_var_decl v)
+    end
+  | GFun (f, l) ->
+    all_functions := f :: !all_functions;
+    analyze_function f
+  | _ -> ()
 
 let analyze_file (f : file) : unit =
   iterGlobals f analyze_global
@@ -394,8 +394,8 @@ let rec traverse_expr (e : exp) : A.tau =
 
 and traverse_expr_as_lval (e : exp) : A.lvalue =
   match e with
-    | Lval l -> traverse_lval l
-    | _ -> assert false (* todo -- other kinds of expressions? *)
+  | Lval l -> traverse_lval l
+  | _ -> assert false (* todo -- other kinds of expressions? *)
 
 and traverse_lval (lv : lval ) : A.lvalue =
   H.find lvalues lv
@@ -403,19 +403,19 @@ and traverse_lval (lv : lval ) : A.lvalue =
 let may_alias (e1 : exp) (e2 : exp) : bool =
   let tau1,tau2 = traverse_expr e1, traverse_expr e2 in
   let result = A.may_alias tau1 tau2 in
-    if !debug_may_aliases then
-      begin
-        let doc1 = d_exp () e1 in
-        let doc2 = d_exp () e2 in
-        let s1 = Pretty.sprint ~width:30 doc1 in
-        let s2 = Pretty.sprint ~width:30 doc2 in
-          Printf.printf
-            "%s and %s may alias? %s\n"
-            s1
-            s2
-            (if result then "yes" else "no")
-      end;
-    result
+  if !debug_may_aliases then
+    begin
+      let doc1 = d_exp () e1 in
+      let doc2 = d_exp () e2 in
+      let s1 = Pretty.sprint ~width:30 doc1 in
+      let s2 = Pretty.sprint ~width:30 doc2 in
+      Printf.printf
+        "%s and %s may alias? %s\n"
+        s1
+        s2
+        (if result then "yes" else "no")
+    end;
+  result
 
 let resolve_lval (lv : lval) : varinfo list =
   A.points_to (traverse_lval lv)
@@ -425,28 +425,28 @@ let resolve_exp (e : exp) : varinfo list =
 
 let resolve_funptr (e : exp) : fundec list =
   let varinfos = A.epoints_to (traverse_expr e) in
-    List.fold_left
-      (fun fdecs -> fun vinf ->
-         try F.find vinf !fun_varinfo_map :: fdecs
-         with Not_found -> fdecs)
-      []
-      varinfos
+  List.fold_left
+    (fun fdecs -> fun vinf ->
+       try F.find vinf !fun_varinfo_map :: fdecs
+       with Not_found -> fdecs)
+    []
+    varinfos
 
 let count_hash_elts h =
   let result = ref 0 in
-    H.iter (fun _ -> fun _ -> incr result) lvalue_hash;
-    !result
+  H.iter (fun _ -> fun _ -> incr result) lvalue_hash;
+  !result
 
 let compute_may_aliases (b : bool) : unit =
   let rec compute_may_aliases_aux (exps : exp list) =
     match exps with
-        [] -> ()
-      | h :: t ->
-          ignore (Golf.list_map (may_alias h) t);
-          compute_may_aliases_aux t
+      [] -> ()
+    | h :: t ->
+      ignore (Golf.list_map (may_alias h) t);
+      compute_may_aliases_aux t
   and exprs : exp list ref = ref [] in
-    H.iter (fun e -> fun _ -> exprs := e :: !exprs) expressions;
-    compute_may_aliases_aux !exprs
+  H.iter (fun e -> fun _ -> exprs := e :: !exprs) expressions;
+  compute_may_aliases_aux !exprs
 
 
 let compute_results (show_sets : bool) : unit =
@@ -457,19 +457,19 @@ let compute_results (show_sets : bool) : unit =
   let print_result (name, set) =
     let rec print_set s =
       match s with
-          [] -> ()
-        | h :: [] -> print_string h
-        | h :: t ->
-            print_string (h ^ ", ");
-            print_set t
+        [] -> ()
+      | h :: [] -> print_string h
+      | h :: t ->
+        print_string (h ^ ", ");
+        print_set t
     and ptsize = List.length set in
-      total_pointed_to := !total_pointed_to + ptsize;
-      if ptsize > 0 then
-        begin
-          print_string (name ^ "(" ^ (string_of_int ptsize) ^ ") -> ");
-          print_set set;
-          print_newline ()
-        end
+    total_pointed_to := !total_pointed_to + ptsize;
+    if ptsize > 0 then
+      begin
+        print_string (name ^ "(" ^ (string_of_int ptsize) ^ ") -> ");
+        print_set set;
+        print_newline ()
+      end
   in
   (* Make the most pessimistic assumptions about globals if an
      undefined function is present. Such a function can write to every
@@ -484,27 +484,27 @@ let compute_results (show_sets : bool) : unit =
     if !show_progress then
       Printf.printf "Computed flow for %d of %d sets\n" !counted total
   in
-    if !conservative_undefineds && !found_undefined then hose_globals ();
-    A.finished_constraints ();
-    if show_sets then
-      begin
-        print_endline "Computing points-to sets...";
-        Hashtbl.iter
-          (fun vinf -> fun lv ->
-             show_progress_fn counted_lvalues total_lvalues;
-             try lval_elts := (vinf.vname, A.points_to_names lv) :: !lval_elts
-             with A.UnknownLocation -> ())
-          lvalue_hash;
-        List.iter print_result !lval_elts;
-        Printf.printf
-          "Total number of things pointed to: %d\n"
-          !total_pointed_to
-      end;
-    if !debug_may_aliases then
-      begin
-        Printf.printf "Printing may alias relationships\n";
-        compute_may_aliases true
-      end
+  if !conservative_undefineds && !found_undefined then hose_globals ();
+  A.finished_constraints ();
+  if show_sets then
+    begin
+      print_endline "Computing points-to sets...";
+      Hashtbl.iter
+        (fun vinf -> fun lv ->
+           show_progress_fn counted_lvalues total_lvalues;
+           try lval_elts := (vinf.vname, A.points_to_names lv) :: !lval_elts
+           with A.UnknownLocation -> ())
+        lvalue_hash;
+      List.iter print_result !lval_elts;
+      Printf.printf
+        "Total number of things pointed to: %d\n"
+        !total_pointed_to
+    end;
+  if !debug_may_aliases then
+    begin
+      Printf.printf "Printing may alias relationships\n";
+      compute_may_aliases true
+    end
 
 let print_types () : unit =
   print_string "Printing inferred types of lvalues...\n";
@@ -554,17 +554,17 @@ let absloc_lval_aliases lv =
 let absloc_e_transitive_points_to (e : Cil.exp) : absloc list =
   let rec lv_trans_ptsto (worklist : varinfo list) (acc : varinfo list) : absloc list =
     match worklist with
-        [] -> Golf.list_map absloc_of_varinfo acc
-      | vi :: wklst'' ->
-          if List.mem vi acc then lv_trans_ptsto wklst'' acc
-          else
-            lv_trans_ptsto
-              (List.rev_append
-                 (A.points_to (lvalue_of_varinfo vi))
-                 wklst'')
-              (vi :: acc)
+      [] -> Golf.list_map absloc_of_varinfo acc
+    | vi :: wklst'' ->
+      if List.mem vi acc then lv_trans_ptsto wklst'' acc
+      else
+        lv_trans_ptsto
+          (List.rev_append
+             (A.points_to (lvalue_of_varinfo vi))
+             wklst'')
+          (vi :: acc)
   in
-    lv_trans_ptsto (A.epoints_to (tau_of_expr e)) []
+  lv_trans_ptsto (A.epoints_to (tau_of_expr e)) []
 
 let absloc_eq a b = A.absloc_eq (a, b)
 
@@ -601,8 +601,8 @@ let feature : featureDescr = {
      " print inferred points-to analysis types")
   ];
   fd_doit = (function (f: file) ->
-               analyze_file f;
-               compute_results !ptrResults;
-               if !ptrTypes then print_types ());
+      analyze_file f;
+      compute_results !ptrResults;
+      if !ptrTypes then print_types ());
   fd_post_check = false (* No changes *)
 }
