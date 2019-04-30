@@ -20,3 +20,4 @@ TAGS
 ## Emacs auto save files
 *~
 \#*\#
+/src/version.ml
