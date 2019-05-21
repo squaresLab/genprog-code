@@ -490,6 +490,9 @@ class type ['gene,'code] representation = object('self_type)
 
       @return hashvalue for this variant.*)
   method hash : unit -> int
+
+  method print_original_src : string -> unit
+
 end
 
 (** Test name to string *)
@@ -1236,6 +1239,19 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     | Some(source_names) -> source_names
     | None -> []
   (**/**)
+
+
+  method print_original_src fname = 
+    let original_filename = (fname) ^ if (!Global.extension <> "")
+        then !Global.extension
+        else "" in
+      self#output_source original_filename ; 
+	(*  note from pdreiter:
+	   clearing already_sourced to ensure that the outputted file isn't removed 
+	   when cleanup () is called
+	*)
+    already_sourced := None ; 
+
 
   (** ignores the return values of the unix system calls it uses, namely [system]
       and [unlink], and thus will fail silently if they do *)
