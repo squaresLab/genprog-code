@@ -280,7 +280,11 @@ let delta_debugging orig to_minimize node_map = begin
   let minimized = delta_set_to_list minimized_script in
   let min_rep = orig#copy() in
 
-  min_rep#construct_rep (None) (Some((script_to_pair_list minimized), node_map));
+  if !minimize_patch then
+    let script = lfoldl (fun acc str -> acc^" "^str) "" minimized in
+    min_rep#construct_rep (Some(script)) (None)
+  else 
+    min_rep#construct_rep (None) (Some((script_to_pair_list minimized), node_map));
 
   min_rep#output "Minimization_Files/minimized.c";
   let output_name = "minimized.diffscript" in
