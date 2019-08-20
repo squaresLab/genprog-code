@@ -1,7 +1,9 @@
-FROM ubuntu:16.04
-MAINTAINER Chris Timperley "christimperley@googlemail.com"
+FROM ubuntu:18.04
 
 RUN apt-get update && \
+    apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository -y ppa:avsm/ppa && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
       opam \
       ocaml \
@@ -9,9 +11,10 @@ RUN apt-get update && \
       jq \
       aspcud \
       vim \
+      gcc \
       m4 && \
     echo "yes" >> /tmp/yes.txt && \
-    opam init -y < /tmp/yes.txt && \
+    opam init --disable-sandboxing -y < /tmp/yes.txt && \
     opam install -y cil
 
 RUN mkdir -p /opt/genprog
