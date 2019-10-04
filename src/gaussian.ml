@@ -137,7 +137,7 @@ class virtual binRep = object (self : 'self_type)
       let res =
         lfoldl
           (fun acc line ->
-             if (Str.string_match regex line 0) then
+             if Str.string_match regex line 0 then
                let count = int_of_string (Str.matched_group 1 line) in
                let addr = int_of_string ("0x"^(Str.matched_group 2 line)) in
                (addr, count) :: acc

@@ -2407,8 +2407,8 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     let fault_fn id (pos,neg) lst =
       match !fault_scheme with
         "path" | "default" | "clone" -> begin
-          if ((pos > 0.0) && (neg > 0.0)) then (id,!positive_path_weight) :: lst
-          else  if (neg > 0.0) then (id,!negative_path_weight) :: lst
+          if (pos > 0.0) && (neg > 0.0) then (id,!positive_path_weight) :: lst
+          else  if neg > 0.0 then (id,!negative_path_weight) :: lst
           else (id,0.0) :: lst
         end
       | "uniform" -> (id, 1.0) :: lst

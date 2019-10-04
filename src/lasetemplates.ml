@@ -544,7 +544,7 @@ class template01Pattern01 gotos retval = object
           not (comp_str cur_lablename (get_label_name !sref) || (is_cil_label !sref))
         ) gotos) in
       if (llen different_stmts) > 0 then begin
-        let (_,newstmt) = List.hd different_stmts in
+        let _,newstmt = List.hd different_stmts in
         preceding_call_lv <- [];
         retval := (s,newstmt,loc) :: !retval;
       end; DoChildren
@@ -592,8 +592,8 @@ class template01Pattern02 goto_ret_htbl stmts retval2  = object(self)
               if not ( has_return_in_goto s goto_ret_htbl) then
                 (begin
                   ignore(List.fold_left (fun bs st ->
-                      if (st.sid == prec_goto_stmt.sid) then true
-                      else if (st.sid == s.sid) then false
+                      if st.sid == prec_goto_stmt.sid then true
+                      else if st.sid == s.sid then false
                       else if bs then
                         let _ =
                           match st.skind with
@@ -650,7 +650,7 @@ let template01 get_fun_by_name fd =
       let sref = lfoldl(fun sref s ->
           if (llen s.labels) > 0 then begin
             let cur_label_nm = get_label_name s in
-            if (comp_str cur_label_nm other_nm) then s
+            if comp_str cur_label_nm other_nm then s
             else sref
           end  else sref
         ) (mkEmptyStmt()) stmts in
@@ -1233,7 +1233,7 @@ class template04Pattern02 retval2 = object
         let fname = exp_str fun_exp in
         liter(fun prefix ->
             try
-              if (contains fname prefix) then
+              if contains fname prefix then
                 hadd vi_call_ht vi.vid ()
             with
             | _ -> ()
@@ -1244,7 +1244,7 @@ class template04Pattern02 retval2 = object
       | If(exp,bl1,bl2,loc) when has_binop exp && has_call bl1 && has_break bl1 ->
         if (has_var_call exp) && (llen !preceding_loop) > 0 then begin
           let pre_loop = lhead !preceding_loop in
-          if (has_cur_if pre_loop s) then begin
+          if has_cur_if pre_loop s then begin
             loop_if_list := (pre_loop,s)::!loop_if_list;
             hadd lp_if_ht pre_loop s;
           end;
@@ -1421,8 +1421,8 @@ let template04 get_fun_by_name fd =
       template (new template04Visitor) one_ele fd
    *********************************************************** *)
   let retval1 =
-    if ((fun_exists get_fun_by_name "Py_EnterRecursiveCall")  &&
-        (fun_exists get_fun_by_name  "Py_LeaveRecursiveCall")) then
+    if (fun_exists get_fun_by_name "Py_EnterRecursiveCall")  &&
+        (fun_exists get_fun_by_name  "Py_LeaveRecursiveCall") then
       visitFnGetList (new template04Pattern01) fd
     else [] in
   if (llen retval1) > 0 then begin
@@ -1586,7 +1586,7 @@ class findHoleVisitor bgnStmt endStmt retHoles = object
   val found = ref false
 
   method vstmt s =
-    if (s.sid == endStmt.sid) then begin
+    if s.sid == endStmt.sid then begin
       found := false;
       SkipChildren
     end else
@@ -1594,7 +1594,7 @@ class findHoleVisitor bgnStmt endStmt retHoles = object
       retHoles := s::!retHoles;
       DoChildren;
     end else
-    if (s.sid == bgnStmt.sid) then begin
+    if s.sid == bgnStmt.sid then begin
       ChangeDoChildrenPost(s, (fun s -> ignore(found := true) ; s))
     end else DoChildren
 end
@@ -1642,7 +1642,7 @@ let get_nth_ifstmt nth stmts = begin
           let _ =
             inc := (!inc + 1);
           in
-          if (!inc == (nth + 1)) then
+          if !inc == (nth + 1) then
             s::acc
           else
             acc
@@ -2506,7 +2506,7 @@ let template07 get_fun_by_name fd =
   if (llen just_pointers) == 0 || (llen fd.sformals) < 3 then IntMap.empty
   else begin
     let retval1 =
-      if (fun_exists get_fun_by_name "_efree") then
+      if fun_exists get_fun_by_name "_efree" then
         visitFnGetList (new template07Pattern01 fd just_pointers) fd
       else [] in
     if (llen retval1) > 0 then
@@ -2522,7 +2522,7 @@ let template07 get_fun_by_name fd =
       pre_template retval1 one_ele
     else
       let retval2 =
-        if (fun_exists get_fun_by_name "memset") then
+        if fun_exists get_fun_by_name "memset" then
           let decVars = visitFnGetList (new declVarVisitor) fd in
           let decVarIDs = lmap (fun vi -> vi.vid) decVars in
           visitFnGetList (new template07Pattern02 decVarIDs decVars) fd
@@ -2866,7 +2866,7 @@ class template08Pattern02 arguments retval2 = object
         let usedVarPtr = ref [] in
         let usedVarIndex = ref [] in
         let _ = ignore(visitCilExpr (new newLvalExprVisitor (integer 512) usedVarPtr usedVarIndex) exp) in
-        if ((llen !usedVarPtr) > 0 && (llen !usedVarIndex) > 0) then
+        if (llen !usedVarPtr) > 0 && (llen !usedVarIndex) > 0 then
           retval2 := (s,exp,!usedVarPtr,!usedVarIndex,blk1,blk2,loc)::!retval2
       end;
       DoChildren
@@ -3536,7 +3536,7 @@ let template09 get_fun_by_name fd =
       pre_template retval2 one_ele
     else
       let retval3 =
-        if (fun_exists get_fun_by_name "free") then visitFnGetList (new template09Pattern03) fd else []
+        if fun_exists get_fun_by_name "free" then visitFnGetList (new template09Pattern03) fd else []
       in
       if (llen retval3) > 0 then
         let one_ele (stmt,exp,bl1,bl2,loc,unopexp,binopexp,varfree) =

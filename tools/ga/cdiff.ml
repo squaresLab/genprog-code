@@ -53,10 +53,10 @@ let last_good_line = ref 0
 
 (* Called by lineRangeVisitor to get the line numbers from the original file. *)
 let lineRangeMethod ht id currentLoc = begin
-    let (lr,_) = (Hashtbl.find ht id) in
+    let lr,_ = (Hashtbl.find ht id) in
     let theLines = ref lr in
     let my_line = (* !currentLoc.line *)
-      if ((String.length (currentLoc.file))!=0 && (String.get (currentLoc.file) 0)!='/') then last_good_line := currentLoc.line;
+      if (String.length (currentLoc.file))!=0 && (String.get (currentLoc.file) 0)!='/' then last_good_line := currentLoc.line;
       !last_good_line
     in 
     theLines := (my_line :: !theLines);
@@ -489,8 +489,8 @@ let wrap_block b = mkStmt (Block(b))
 
 (* Builds a (file,minline,maxline) tuple and adds it to the verbose HT *)
 let build_node_tuple id =
-  if (Hashtbl.mem node_id_to_line_list_fn id) then begin 
-    let (lr,f) = (Hashtbl.find node_id_to_line_list_fn id) in
+  if Hashtbl.mem node_id_to_line_list_fn id then begin 
+    let lr,f = (Hashtbl.find node_id_to_line_list_fn id) in
     if (List.length lr)!=0 then begin
       let lineRange = ref lr in
       lineRange := (List.sort (fun x y -> x - y) !lineRange);

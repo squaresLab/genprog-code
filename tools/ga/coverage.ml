@@ -227,7 +227,7 @@ let main () = begin
       if !do_cfg then begin
         Partial.calls_end_basic_blocks file 
       end ; 
-      if (!do_empty) then begin
+      if !do_empty then begin
         visitCilFileSameGlobals my_empty file ; 
       end; 
 
