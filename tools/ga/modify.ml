@@ -69,7 +69,7 @@ let average_tracking a b =
 let new_tracking () = 
   { current = new_counters () ; at_last_fitness = new_counters (); } 
 
-let print_best_output = ref (fun () -> ()) 
+let print_best_output = ref ident 
 
 
 (* we copy all debugging output to a file and to stdout *)
