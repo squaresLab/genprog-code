@@ -1159,8 +1159,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       abort "cachingRepresentation: sanity check failed (compilation)\n"
     end ;
     let tests =
-      (lmap (fun i -> (Negative i, ident)) (1 -- !neg_tests))
-      @ (lmap (fun i -> (Positive i, (fun b -> not b))) (1 -- !pos_tests))
+      (lmap (fun i -> Negative i, ident) (1 -- !neg_tests))
+      @ (lmap (fun i -> Positive i, (fun b -> not b)) (1 -- !pos_tests))
     in
     liter (fun (t, failed) ->
         let name = test_name t in
@@ -2440,7 +2440,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
           (*given a weighted path, read in a CC file (if one is specified) and recompute weights *)
           self#read_clone_file ();
           let ochan = open_out "partition.ht" in (* CLG assumes this is for debugging? *)
-          Hashtbl.iter (fun id (set,weight) -> (fprintf ochan "%d %f %s" id weight (WeightSet.fold (fun (elem, w) accum -> (accum ^ (string_of_int elem) ^ " ")) set ""))) partitions
+          Hashtbl.iter (fun id (set,weight) -> fprintf ochan "%d %f %s" id weight (WeightSet.fold (fun (elem, w) accum -> (accum ^ (string_of_int elem) ^ " ")) set "")) partitions
         end
     in
     let _ = (* fix localization *)

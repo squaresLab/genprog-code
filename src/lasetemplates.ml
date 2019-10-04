@@ -1761,7 +1761,7 @@ class template05Pattern01 retval1 = object
         let uniqnms = uniq names_lefthand_set in
         let morethanthree =
           List.exists (fun nm ->
-              let filtered = lfilt(fun e -> (comp_str e nm)) names_lefthand_set in
+              let filtered = lfilt(fun e -> comp_str e nm) names_lefthand_set in
               (llen filtered) > 2
             ) uniqnms in
         if morethanthree then begin
@@ -2719,7 +2719,7 @@ class usedVarBlockVisitor argsFun retUsedVars  = object
       let usedVars = visitExprGetList (new usedVarVisitor) exp in
       (* check if preceding function call's returned variable is used in the If expression. *)
       let vid_usedVars = lfoldl (fun acc vi -> vi.vid :: acc)[] usedVars in
-      let rst_vars = List.exists (fun vi -> (lmem vi.vid vid_usedVars)) !preceding_ret_var in
+      let rst_vars = List.exists (fun vi -> lmem vi.vid vid_usedVars) !preceding_ret_var in
       if rst_vars && !contain_arguments_expression then begin
         retUsedVars := true; SkipChildren
       end else    DoChildren
@@ -3186,7 +3186,7 @@ class chkStmtThenBlockVisitor retval1 retval2 = object
       let usedVarsExp = visitExprGetList (new usedVarVisitor) exp in
       (* check if preceding function call's returned variable is used in the If expression. *)
       let vid_usedVarsExp = lfoldl (fun acc vi -> vi.vid :: acc)[] usedVarsExp in
-      let rst_vars = lfilt (fun vi -> (lmem vi.vid vid_usedVarsExp)) !preceding_call_retVar in
+      let rst_vars = lfilt (fun vi -> lmem vi.vid vid_usedVarsExp) !preceding_call_retVar in
       (* return all function expression if all patterns are satisfied. *)
       if (llen rst_vars) > 0 then begin
         let _ = retval1 := !preceding_call_fun_exp in
@@ -3454,7 +3454,7 @@ class template09Pattern04 fd retval4 = object
       let chk_sizeof_stmt exp_list =
         List.exists (fun exp ->
             let ret_exp_lst = visitExprGetList (new chkBinopMinExprVisitor) exp in
-            List.exists (fun (e,n) -> (has_sizeof_stmt e)) ret_exp_lst)
+            List.exists (fun (e,n) -> has_sizeof_stmt e) ret_exp_lst)
           exp_list
       in
       if (llen retval) > 0 && not (chk_sizeof_stmt args) then
