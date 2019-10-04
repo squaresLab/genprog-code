@@ -2937,7 +2937,7 @@ class patchCilRep = object (self : 'self_type)
         in
         List.map (fun x ->
             try
-              Scanf.sscanf x "%r" scanner (fun g -> g)
+              Scanf.sscanf x "%r" scanner ident
             with End_of_file ->
               failwith (Printf.sprintf "incomplete gene '%s'" x)
           ) split_genome
