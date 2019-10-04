@@ -507,7 +507,7 @@ let test_of_string s =
         | _   -> failwith ("invalid test name '"^s^"'")
       )
   in
-  Scanf.sscanf s "%r" scan_test_name ident
+  Scanf.sscanf s "%r" scan_test_name (fun t -> t)
 
 (*
  * This is a list of variables representing global options related to
@@ -1159,7 +1159,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       abort "cachingRepresentation: sanity check failed (compilation)\n"
     end ;
     let tests =
-      (lmap (fun i -> Negative i, ident) (1 -- !neg_tests))
+      (lmap (fun i -> Negative i, (fun b -> b)) (1 -- !neg_tests))
       @ (lmap (fun i -> Positive i, (fun b -> not b)) (1 -- !pos_tests))
     in
     liter (fun (t, failed) ->

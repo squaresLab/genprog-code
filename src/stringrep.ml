@@ -153,7 +153,7 @@ class stringRep = object (self : 'self_type)
       else
         List.map (fun x ->
             try
-              Scanf.sscanf x "%r" scan_history_element ident
+              Scanf.sscanf x "%r" scan_history_element (fun g -> g)
             with End_of_file ->
               failwith (Printf.sprintf "incomplete gene '%s'" x)
           ) split_genome
