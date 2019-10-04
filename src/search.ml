@@ -1035,7 +1035,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
   if(List.length !excluded_edits) > 0 then begin
     deletes := List.filter
         (fun (Delete(src),_,_) ->
-           let app_str = (Printf.sprintf "d(%d)" src) in
+           let app_str = Printf.sprintf "d(%d)" src in
            not (List.mem app_str !excluded_edits))
         !deletes
   end ;
@@ -1057,7 +1057,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
             rep#append dest src;
             rep
           in
-          let this_append = ((Append(dest,src)),thunk, w1) in
+          let this_append = (Append(dest,src)),thunk, w1 in
           appends := this_append :: !appends
         ) appsrc ;
     ) fault_localization ;
@@ -1065,7 +1065,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
   if(List.length !excluded_edits) > 0 then begin
     appends := List.filter
         (fun (Append(dest,src),_,_) ->
-           let app_str = (Printf.sprintf "a(%d,%d)" dest src) in
+           let app_str = Printf.sprintf "a(%d,%d)" dest src in
            not (List.mem app_str !excluded_edits))
         !appends
   end ;
@@ -1249,7 +1249,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
     in
     let first_k, rest = split_nth remaining k in
     let first_k = List.sort my_compare first_k in
-    let best_k = (walk first_k rest) in
+    let best_k = walk first_k rest in
     best_k
   in
 

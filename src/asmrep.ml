@@ -90,7 +90,7 @@ class asmRep = object (self : 'self_type)
           start
           (lfoldl
              (fun lines i ->
-                let found_string = (Str.string_match label_regex (!atoms.(i)) 0) in
+                let found_string = Str.string_match label_regex (!atoms.(i)) 0 in
                 if found_string then
                   (strip (Str.matched_string (!atoms.(i))))::lines
                 else

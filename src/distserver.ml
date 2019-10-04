@@ -74,9 +74,9 @@ let main ()= begin
         | ADDR_INET(addr,port) -> (string_of_inet_addr addr)
         | _ -> failwith("Client did not have an inet_addr")
       in
-      let str = (Printf.sprintf "%d" currcomp) in
+      let str = Printf.sprintf "%d" currcomp in
       fullsend sock str;
-      let str = (Printf.sprintf "%d" !num_comps) in
+      let str = Printf.sprintf "%d" !num_comps in
       fullsend sock str;
       Hashtbl.add client_tbl currcomp (sock,addr,0);
       Hashtbl.add info_tbl currcomp (false,0,0,0);

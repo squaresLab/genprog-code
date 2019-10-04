@@ -239,7 +239,7 @@ let main () = begin
 
       if !do_uniq then begin
         let size = 1 + !counter in 
-        let size_exp = (Const(CInt64(Int64.of_int size,IInt,None))) in 
+        let size_exp = Const(CInt64(Int64.of_int size,IInt,None)) in 
         uniq_array_va := (makeGlobalVar "___coverage_array"
           (TArray(charType, Some(size_exp), []))) ;
         let new_global = GVarDecl(!uniq_array_va,!currentLoc) in 
@@ -262,7 +262,7 @@ let main () = begin
       file.globals <- new_global :: file.globals ; 
 
       let fd = Cil.getGlobInit file in 
-      let lhs = (Var(stderr_va),NoOffset) in 
+      let lhs = Var(stderr_va),NoOffset in 
       let data_str = arg ^ ".path" in 
       let str_exp = Const(CStr(data_str)) in 
       let str_exp2 = Const(CStr("wb")) in 

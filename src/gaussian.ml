@@ -71,7 +71,7 @@ module Gaussian = struct
       (fun (addr, count) ->
          List.iter
            (fun (offset, mult) ->
-              let index = (offset + addr) in
+              let index = offset + addr in
               let current = ht_find map index (fun _ -> 0.0) in
               hrep map index (current +. ((float_of_int count) *. mult)))
            kernel)

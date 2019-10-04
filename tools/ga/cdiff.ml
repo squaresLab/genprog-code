@@ -471,7 +471,7 @@ let stmt_to_typelabel (s : Cil.stmt) =
     | TryExcept(b1,(il,e),b2,l) ->
       TryExcept(dummyBlock,(convert_il il,e),dummyBlock,dummyLoc) 
   in
-  let it = (labels, skind) in 
+  let it = labels, skind in 
   let s' = { s with skind = skind ; labels = labels } in 
   let doc = dn_stmt () s' in 
   let str = Pretty.sprint ~width:80 doc in 
@@ -494,8 +494,8 @@ let build_node_tuple id =
     if (List.length lr)!=0 then begin
       let lineRange = ref lr in
       lineRange := (List.sort (fun x y -> x - y) !lineRange);
-      let min = (List.hd !lineRange) in
-      let max = (List.nth !lineRange ((List.length !lineRange)-1)) in
+      let min = List.hd !lineRange in
+      let max = List.nth !lineRange ((List.length !lineRange)-1) in
       Hashtbl.add verbose_node_info id (f,min,max)
      end
      else

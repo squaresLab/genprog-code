@@ -587,7 +587,7 @@ class template01Pattern02 goto_ret_htbl stmts retval2  = object(self)
       if (llen prec_srefId) > 0 && (htable_size goto_ret_htbl) < 2 then (begin
           let line_label = get_line_label s in
           if line_label <> (-1114) && line_label == prec_goto_line then (begin
-              let prec_goto_stmt = (lhead prec_goto) in
+              let prec_goto_stmt = lhead prec_goto in
               (* this labeled statement has not return. *)
               if not ( has_return_in_goto s goto_ret_htbl) then
                 (begin
@@ -1180,7 +1180,7 @@ class chkIfThenElseBlkVisitor retval = object
   method vstmt s =
     let is_empty_block bl = begin
       if (llen bl.bstmts) == 1 then begin
-        let str = (stmt_str (lhead bl.bstmts)) in
+        let str = stmt_str (lhead bl.bstmts) in
         comp_str str ""
       end else false
     end in
@@ -1230,7 +1230,7 @@ class template04Pattern02 retval2 = object
     let _ =
       match s.skind with
       | Instr([Call(Some (Var(vi), NoOffset),fun_exp,arguments,loc)]) ->
-        let fname = (exp_str fun_exp) in
+        let fname = exp_str fun_exp in
         liter(fun prefix ->
             try
               if (contains fname prefix) then
@@ -1363,7 +1363,7 @@ class template04Pattern04 retval4 retval7 = object
           match !prec_call_predefined with
             fst_call :: rest ->
             prec_call_predefined := rest;
-            let snd_call = (lhead !prec_call) in
+            let snd_call = lhead !prec_call in
             (* addition of the two preceding calls by switching the order. *)
             (* CLG notes: this used to be 3 retvals, but they were redundant *)
             retval4 := (s,fst_call,snd_call)::!retval4
@@ -1386,7 +1386,7 @@ class template04Pattern04 retval4 retval7 = object
             lapnd b.bstmts acc
           ) [] filtered_ifSt_blk in
         let prv_ifSt_blk = mkBlock(filtered_ifSt_blk) in
-        let prv_call = (lhead !prec_call) in
+        let prv_call = lhead !prec_call in
         retval7 := (s,exp,prv_call,prv_ifSt_blk,loc)::!retval7
       | If(exp,bl1,bl2,loc) -> prec_ifSt_blk := bl1::!prec_ifSt_blk
       | _ -> ()
@@ -1619,7 +1619,7 @@ let del_lastreturn bl = begin
   | Return _ ->
     (* ___dbug___; *)
     let newstmts = ltail (lrev bl.bstmts) in
-    let newstmts = (lrev newstmts) in
+    let newstmts = lrev newstmts in
     (* let _ = liter (fun s -> debug "### %s\n" (one_line (stmt_str s))) newstmts; in *)
     let newbl = mkBlock newstmts in
     newbl;
@@ -1830,7 +1830,7 @@ let template05 get_fun_by_name fd =
   else
     let nth_ifstmt1 = get_ifContainment fd 3 2 in
     let nth_ifstmt2 = get_ifContainment fd 4 2 in
-    let nth_ifstmt = (nth_ifstmt1,nth_ifstmt2) in
+    let nth_ifstmt = nth_ifstmt1,nth_ifstmt2 in
     let retval2 =  visitFnGetList (new template05Pattern02 nth_ifstmt) fd  in
     let one_ele (stmt,block1,block2,location) =
       let newblstmts = lapnd block1.bstmts block2.bstmts in
@@ -2123,7 +2123,7 @@ let template06 get_fun_by_name fd = begin
             let tempVar = makeTempVar fd intType in
             let lval_tmpVar = var tempVar in
             (* used 'specific_value_eight' intentionally yet need to get this value from configuration. *)
-            let default_value = (integer 1) in
+            let default_value = integer 1 in
             let stmt_tmpVar = mkStmtOneInstr(Set(lval_tmpVar, default_value, lu)) in
             (* let default_case_stmt = mkStmt (Instr [Set(lval_tmpVar, default_value, lu)]) in *)
             let default_case_stmt = { default_case_stmt with
@@ -2686,7 +2686,7 @@ class newLvalExprVisitor constIndex usedVarPtr usedVarIndex = object
         let ptrHead = Mem (Lval (Var vi, NoOffset)) in
         let expPtr = Lval(ptrHead, Field (fi,NoOffset)) in
         let _ = usedVarPtr := expPtr::!usedVarPtr in
-        let newlval = (ptrHead, Field(fi,Index(constIndex, NoOffset))) in
+        let newlval = ptrHead, Field(fi,Index(constIndex, NoOffset)) in
         let _ = usedVarIndex := newlval::!usedVarIndex in
         DoChildren
       end;
@@ -2791,7 +2791,7 @@ class template08Pattern01 retval1 = object
               None, groups
             else
               begin
-                let newitem = (addr, gottype, s, loc) in
+                let newitem = addr, gottype, s, loc in
                 begin match base with
                   (* no previous group; start a new one *)
                     None -> Some(addr), [newitem]::groups
@@ -2910,7 +2910,7 @@ let template08 get_fun_by_name fd =
       (* create a function call and assign the returned value to a temporary variable. *)
       let fun_lval = mk_lval (get_fun_by_name "strlen") in
       let args = [ (lhead usedVarPtr) ] in
-      let lval_tmpVar = (Var (makeTempVar fd intType), NoOffset) in
+      let lval_tmpVar = Var (makeTempVar fd intType), NoOffset in
       let call_stmt = mkStmt (Instr([Call(Some lval_tmpVar,fun_lval,args,lu)])) in
       (* create an If statement by using an used variable in a function call. *)
       let boExp = BinOp(Gt, (Lval lval_tmpVar), (integer 511), intType) in
@@ -3218,7 +3218,7 @@ class chkCallsStmtVisitor preceding_retval retval = object
             ignore(visitCilExpr(new usedVarVisitor usedVars) exp)
           ) args in
         let filtered = List.exists(fun v ->
-            let pr = (lhead !preceding_retval) in
+            let pr = lhead !preceding_retval in
             pr.vid == v.vid
           ) !usedVars in
         if filtered then begin

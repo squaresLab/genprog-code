@@ -1150,7 +1150,7 @@ let main () = begin
     end ; 
 
 
-    let source_out = (!filename ^ "-baseline.c") in 
+    let source_out = !filename ^ "-baseline.c" in 
     baseline_file := source_out ; 
     let fout = open_out source_out in 
     dumpFile defaultCilPrinter fout source_out file ;
@@ -1224,7 +1224,7 @@ let main () = begin
 		  flush !debug_out ;
 		  (*v_*)
 
-        let source_out = (!filename ^ "-" ^ !input_params ^ "-best.c") in 
+        let source_out = !filename ^ "-" ^ !input_params ^ "-best.c" in 
         let fout = open_out source_out in 
         dumpFile defaultCilPrinter fout source_out best_file ;
         close_out fout ; 
@@ -1249,8 +1249,8 @@ let main () = begin
         ((float !total_number_of_micromutations) /. 
         (float !total_number_of_macromutations)) ; 
 
-      let comp_fail = ((Int32.to_float (Int32.of_int !compile_fail)) /. (Int32.to_float (Int32.of_int !compile_tried))) in
-      let comp_fail2 = ((Int32.to_float (Int32.of_int !compile_fail)) /. (Int32.to_float (Int32.of_int !total_fitness_evals))) in
+      let comp_fail = (Int32.to_float (Int32.of_int !compile_fail)) /. (Int32.to_float (Int32.of_int !compile_tried)) in
+      let comp_fail2 = (Int32.to_float (Int32.of_int !compile_fail)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
       debug "Percent of unique variants that failed to compile: %d/%d = %g\n" 
         !compile_fail !compile_tried comp_fail; 
       debug "Percent possibly-cached fitness evals that failed to compile: %d/%d = %g\n" 

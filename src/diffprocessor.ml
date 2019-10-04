@@ -211,7 +211,7 @@ let get_last_bracket_line filename starting_line = begin
       (List.length file_lines)
     end
     else begin
-      let this_line = (List.nth file_lines current_line) in
+      let this_line = List.nth file_lines current_line in
       if List.for_all (fun x -> x="}") (Str.split whitespace this_line)
       then begin
         walk (current_line+1)
@@ -440,8 +440,8 @@ let _ =
       if (List.length lr)!=0 then begin
         let lineRange = ref lr in
         lineRange := (List.sort (fun x y -> x - y) !lineRange);
-        let min = (List.hd !lineRange) in
-        let max = (List.nth !lineRange ((List.length !lineRange)-1)) in
+        let min = List.hd !lineRange in
+        let max = List.nth !lineRange ((List.length !lineRange)-1) in
         Hashtbl.add verbose_node_info id (f,min,max)
       end
       else

@@ -442,7 +442,7 @@ and update_env lv res =
   match lv with
   | Var(va),NoOffset -> Hashtbl.replace env str res
   | Var(va),Field(fi,NoOffset) when is_xyz_field fi -> begin
-      let outer_lv = (Var(va),NoOffset) in
+      let outer_lv = Var(va),NoOffset in
       let outer = get_from_env outer_lv in
       match outer, array_ify res with
       | CFloatArray(olda), CFloatArray(newa) ->
@@ -465,7 +465,7 @@ and update_env lv res =
     end
 
   | Var(va),Field(fi,NoOffset) when fi.fname = "dummy_field" -> begin
-      let outer_lv = (Var(va),NoOffset) in
+      let outer_lv = Var(va),NoOffset in
       let outer = get_from_env outer_lv in
       match outer, array_ify res with
       | CFloatArray(olda), CFloatArray(newa) ->
@@ -499,7 +499,7 @@ and get_from_env ?(warn=true) lv =
       match lv with
       | Var(va),NoOffset -> Hashtbl.find env str
       | Var(va),Field(fi,NoOffset) when is_xyz_field fi -> begin
-          let outer = (get_from_env (Var(va),NoOffset)) in
+          let outer = get_from_env (Var(va),NoOffset) in
           match outer with
           | CFloatArray(fa) ->
             let len = String.length fi.fname in
