@@ -2504,7 +2504,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       "tarantula" | "jaccard" | "ochiai" | "clone" ->
       let cacheout = open_out ("results_"^(!fault_scheme)^".txt") in
       let ochan = open_out "cachetable.txt" in
-      let printer = fun (id) (pos,neg) -> (fprintf ochan "%d %f %f\n" id pos neg) in
+      let printer = fun id (pos,neg) -> (fprintf ochan "%d %f %f\n" id pos neg) in
       let printer2 = fun (id,weight) -> (fprintf cacheout "%d %d %f %s\n" (snd(self#source_line_of_atom_id id)) id weight (fst(self#source_line_of_atom_id id))) in
       Hashtbl.iter printer atom_test_coverage;
       close_out ochan;

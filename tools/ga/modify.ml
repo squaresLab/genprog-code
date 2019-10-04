@@ -979,7 +979,7 @@ let mut_rb (indiv : individual)
     
   (* filter non-neutral individuals *)
   let neutral = ref (
-    List.filter (fun (member) -> fitness member = !neutral_fitness )
+    List.filter (fun member -> fitness member = !neutral_fitness )
                 (initial_population indiv num) ) in 
     
     (* possibly save neutral individuals out to file *)
