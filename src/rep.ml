@@ -550,10 +550,12 @@ let regen_paths = ref false
 
 let fault_scheme = ref "path"
 let fault_path = ref "coverage.path.neg"
+let fault_path_per_test = ref false
 let fault_file = ref ""
 
 let fix_scheme = ref "default"
 let fix_path = ref "coverage.path.pos"
+let fix_path_per_test = ref false
 let fix_file = ref ""
 let fix_oracle_file = ref ""
 let coverage_info = ref ""
@@ -639,6 +641,9 @@ let _ =
                "--fault-path", Arg.Set_string fault_path,
                "X Negative path file, for path-based localization.  Default: coverage.path.neg";
 
+               "--fault-path-per-test", Arg.Set fault_path_per_test,
+               "X Obtain Negative path coverage for each test.  Default: coverage.path.neg.<test id>";
+
                "--fault-file", Arg.Set_string fault_file,
                "X Fault localization file.  e.g., Lines/weights if scheme is lines/weights.";
 
@@ -647,6 +652,9 @@ let _ =
 
                "--fix-path", Arg.Set_string fix_path,
                "X Positive path file, for path-based localization. Default: coverage.path.pos";
+
+               "--fix-path-per-test", Arg.Set fix_path_per_test,
+               "X Obtain Positive path coverage for each test.  Default: coverage.path.pos.<test id>";
 
                "--fix-file", Arg.Set_string fix_file,
                "X Fix localization information file, e.g., Lines/weights.";
@@ -1977,11 +1985,11 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       end ;
       if TestSet.is_empty !set_of_all_tests then begin
         let answer = ref TestSet.empty in
-        for i = 1 to !pos_tests do
-          answer := TestSet.add (Positive i) !answer ;
-        done ;
         for i = 1 to !neg_tests do
           answer := TestSet.add (Negative i) !answer ;
+        done ;
+        for i = 1 to !pos_tests do
+          answer := TestSet.add (Positive i) !answer ;
         done ;
         set_of_all_tests := !answer ;
         !answer
@@ -2116,7 +2124,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
      * localization involves finding all of the statements visited while
      * executing the negative test case(s) and removing/down-weighting
      * statements visited while executing the positive test case(s).  *)
-    let run_tests test_maker max_test out_path expected =
+    let run_tests test_maker max_test out_path expected per_test_path =
       let stmts =
         lfoldl
           (fun stmts test ->
@@ -2165,12 +2173,25 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
               *
               * Otherwise, we just union up all of the atoms visited
               * by all of the tests. *)
-             if !coverage_per_test then begin
+             if !coverage_per_test or !per_test_path then begin
                let visited_atom_set = List.fold_left (fun acc elt ->
                    AtomSet.add elt acc
                  ) (AtomSet.empty) !stmts' in
                debug "\t\tcovers %d atoms\n"
                  (AtomSet.cardinal visited_atom_set) ;
+		(*
+               debug "\t\t test - %d \n" test;
+				 AtomSet.iter (printf "%d ") visited_atom_set;
+		*)
+                 if !per_test_path then begin 
+                   debug "coverage file: %s \n" (String.concat "." [out_path; string_of_int test]);
+                   let fout = open_out (String.concat "." [out_path; string_of_int test]) in
+                         AtomSet.iter
+                           (fun stmt ->
+                              let str = Printf.sprintf "%d\n" stmt in
+                              output_string fout str) visited_atom_set;
+                         close_out fout; 
+			     end; 
                AtomSet.iter (fun atom ->
                    let other_tests_visiting_this_atom =
                      try
@@ -2195,9 +2216,9 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       close_out fout; stmts
     in
     debug "coverage negative:\n";
-    ignore(run_tests (fun t -> Negative t) !neg_tests fault_path false);
+    ignore(run_tests (fun t -> Negative t) !neg_tests fault_path false fault_path_per_test);
     debug "coverage positive:\n";
-    ignore(run_tests (fun t -> Positive t) !pos_tests fix_path true) ;
+    ignore(run_tests (fun t -> Positive t) !pos_tests fix_path true fix_path_per_test) ;
 
     if !coverage_per_test then begin
       let total_tests = ref 0 in
