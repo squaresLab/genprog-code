@@ -88,6 +88,10 @@ let _ =
                "X genome for oracle search, either string or binary file.";
 
                "--version", Arg.Set show_version, " print the version and exit";
+
+               "--disable-aslr", Arg.Set Rep.disable_aslr,
+               " Disable ASLR during test runtime";
+
              ]
 
 

@@ -493,6 +493,8 @@ class type ['gene,'code] representation = object('self_type)
 
   method print_original_src : string -> unit
 
+  method system_aslr : string -> Unix.process_status
+
 end
 
 (** Test name to string *)
@@ -576,6 +578,8 @@ let atom_test_coverage = Hashtbl.create 255
 let sanity = ref "default"
 
 let ccfile = ref ""  (* path to code clone file *)
+
+let disable_aslr = ref false
 
 let _ =
   options := !options @
@@ -1248,6 +1252,12 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     | None -> []
   (**/**)
 
+  method system_aslr cmd =
+	let local_cmd = 
+	if not !disable_aslr then cmd
+	else "setarch "^(read_process "uname -m")^" -R "^(cmd) in
+    system local_cmd;
+    
 
   method print_original_src fname = 
     let original_filename = (fname) ^ if (!Global.extension <> "")
