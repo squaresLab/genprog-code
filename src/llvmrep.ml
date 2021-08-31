@@ -1,10 +1,11 @@
 (*
  *
- * Copyright (c) 2012-2017,
- *  Wes Weimer          <weimer@cs.virginia.edu>
- *  Stephanie Forrest   <forrest@cs.unm.edu>
+ * Copyright (c) 2012-2018,
+ *  Wes Weimer          <weimerw@umich.edu>
+ *  Stephanie Forrest   <steph@asu.edu>
+ *  Claire Le Goues     <clegoues@cs.cmu.edu>
  *  Eric Schulte        <eschulte@cs.unm.edu>
- *  Claire Le Goues     <legoues@cs.cmu.edu>
+ *  Jeremy Lacomis      <jlacomis@cmu.edu>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -62,7 +63,7 @@ class llvmRep = object (self : 'self_type)
 
   method copy () : 'self_type =
     let super_copy : 'self_type = super#copy () in
-      super_copy
+    super_copy
 
   method from_source (filename : string) =
     genome := file_to_string filename
@@ -71,14 +72,14 @@ class llvmRep = object (self : 'self_type)
     string_to_file filename !genome
 
   method get_compiler_command () =
-    match !compiler_command with 
+    match !compiler_command with
     | "" -> "cat __SOURCE_NAME__|"^llvm_mutate^" -l -o __EXE_NAME__"
     |  x -> x
 
   (* internal_compute_source_buffers can theoretically overflow the buffer if
      the rep is extremely large *)
   method internal_compute_source_buffers () =
-      [ None, Some(copy !genome) ]
+    [ None, Some(copy !genome) ]
 
   method serialize ?out_channel ?global_info (filename : string) =
     let fout =
@@ -86,11 +87,11 @@ class llvmRep = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_out_bin filename
     in
-      Marshal.to_channel fout (llvmRep_version) [] ;
-      Marshal.to_channel fout (!genome) [] ;
-      debug "llvmRep: %s: saved\n" filename ;
-      super#serialize ~out_channel:fout ?global_info:global_info filename ;
-      if out_channel = None then close_out fout
+    Marshal.to_channel fout (llvmRep_version) [] ;
+    Marshal.to_channel fout (!genome) [] ;
+    debug "llvmRep: %s: saved\n" filename ;
+    super#serialize ~out_channel:fout ?global_info:global_info filename ;
+    if out_channel = None then close_out fout
 
   (* load in serialized state.  Deserialize can fail if the file from which the
      rep is being read does not conform to the expected format, or if the
@@ -102,14 +103,14 @@ class llvmRep = object (self : 'self_type)
       | None -> open_in_bin filename
     in
     let version = Marshal.from_channel fin in
-      if version <> llvmRep_version then begin
-        debug "llvmRep: %s has old version\n" filename ;
-        failwith "version mismatch"
-      end ;
-      genome := Marshal.from_channel fin ;
-      debug "llvmRep: %s: loaded\n" filename ;
-      super#deserialize ~in_channel:fin ?global_info:global_info filename ;
-      if in_channel = None then close_in fin
+    if version <> llvmRep_version then begin
+      debug "llvmRep: %s has old version\n" filename ;
+      failwith "version mismatch"
+    end ;
+    genome := Marshal.from_channel fin ;
+    debug "llvmRep: %s: loaded\n" filename ;
+    super#deserialize ~in_channel:fin ?global_info:global_info filename ;
+    if in_channel = None then close_in fin
 
   (* Run an llvm-mutate command with a temporary source file *)
   method run (cmd : string) : unit =
@@ -155,7 +156,7 @@ class llvmRep = object (self : 'self_type)
       if return then (my_int_of_string (file_to_string tmp_to))
       else begin failwith "llvmRep: `"^cmd^"' failed"; 0 end in
     cleanup();
-      result
+    result
 
   method get_atoms () =
     List.fold_left (fun atoms i -> AtomSet.add i atoms)
@@ -180,7 +181,7 @@ class llvmRep = object (self : 'self_type)
     match (system cmd) with
     | Unix.WEXITED(0) -> ()
     | _ -> failwith "llvmRep: fault localization instrumentation failed";
-    if Sys.file_exists tmp_from then Sys.remove tmp_from;
+      if Sys.file_exists tmp_from then Sys.remove tmp_from;
 
   method debug_info () = debug "llvmRep: lines = 1--%d\n" (self#max_atom ())
 

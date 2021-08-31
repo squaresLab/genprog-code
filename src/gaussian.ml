@@ -1,12 +1,13 @@
 (*
  *
- * Copyright (c) 2012-2017,
- *  Wes Weimer          <weimer@cs.virginia.edu>
- *  Stephanie Forrest   <forrest@cs.unm.edu>
+ * Copyright (c) 2012-2018,
+ *  Wes Weimer          <weimerw@umich.edu>
+ *  Stephanie Forrest   <steph@asu.edu>
+ *  Claire Le Goues     <clegoues@cs.cmu.edu>
  *  Eric Schulte        <eschulte@cs.unm.edu>
- *  Claire Le Goues     <legoues@cs.cmu.edu>
+ *  Jeremy Lacomis      <jlacomis@cmu.edu>
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
  * met:
@@ -43,12 +44,12 @@ open Simplerep
 
 (**/**)
 let sample_runs = ref 100
-let _ = 
+let _ =
   options := !options @
-    [
-      "--sample-runs", Arg.Set_int sample_runs, 
-      "X Execute X runs of the test suite while sampling with oprofile.";
-    ]
+             [
+               "--sample-runs", Arg.Set_int sample_runs,
+               "X Execute X runs of the test suite while sampling with oprofile.";
+             ]
 (**/**)
 
 (** Implements a simple Gaussian blur function for the smoothing of sampled
@@ -66,17 +67,17 @@ module Gaussian = struct
       (list : (int * int) list) =
     let map = ((Hashtbl.create (List.length list)) : (int, float) Hashtbl.t) in
     let result = ref ([] : (int * float) list) in
-      List.iter
-        (fun (addr, count) ->
-          List.iter
-            (fun (offset, mult) ->
+    List.iter
+      (fun (addr, count) ->
+         List.iter
+           (fun (offset, mult) ->
               let index = (offset + addr) in
               let current = ht_find map index (fun _ -> 0.0) in
-                hrep map index (current +. ((float_of_int count) *. mult)))
-            kernel)
-        list ;
-      Hashtbl.iter (fun a b -> result := (a,b) :: !result) map ;
-      List.sort pair_compare !result
+              hrep map index (current +. ((float_of_int count) *. mult)))
+           kernel)
+      list ;
+    Hashtbl.iter (fun a b -> result := (a,b) :: !result) map ;
+    List.sort pair_compare !result
 
 end
 
@@ -89,10 +90,10 @@ class virtual binRep = object (self : 'self_type)
       implementations as necessary.  note that the order here matters because
       OCaml inheritence is syntactic, not a semantic, relationship *)
   inherit [string list, string list] faultlocRepresentation as faultlocSuper
-  inherit simpleRep as super 
+  inherit simpleRep as super
 
-  method private virtual mem_mapping :  
-      string -> string -> (int, int) Hashtbl.t
+  method private virtual mem_mapping :
+    string -> string -> (int, int) Hashtbl.t
 
   (** This differs between [Asmrep.asmRep] and [Elfrep.elfRep].
 
@@ -101,9 +102,9 @@ class virtual binRep = object (self : 'self_type)
       @param mem_mapping hashtable mapping memory locations to statement IDs (or
       the other way around; Eric?)
       @return weighted_path with appropriate combination based on memory_mapping.
- *)
-  method private virtual combine_coverage :  
-      (int * float) list -> (int, int)  Hashtbl.t  -> (int * float) list 
+  *)
+  method private virtual combine_coverage :
+    (int * float) list -> (int, int)  Hashtbl.t  -> (int * float) list
 
   (** [get_coverage] for both binary representations calls out to oprofile to
       produce samples of visited instructions on the fault and fix paths.  This
@@ -116,74 +117,74 @@ class virtual binRep = object (self : 'self_type)
      * and neg test executions separately.  *)
     let pos_exe = coverage_exename^".pos" in
     let neg_exe = coverage_exename^".neg" in
-      ignore(system ("cp "^coverage_exename^" "^coverage_exename^".pos"));
-      ignore(system ("cp "^coverage_exename^" "^coverage_exename^".neg"));
-      for i = 1 to !sample_runs do (* run the positive tests *)
-        for i = 1 to !pos_tests do
-          ignore(self#internal_test_case pos_exe
-                   coverage_sourcename (Positive i))
-        done ;
-        for i = 1 to !neg_tests do
-          ignore(self#internal_test_case neg_exe coverage_sourcename (Negative i)) 
-        done ;
+    ignore(system ("cp "^coverage_exename^" "^coverage_exename^".pos"));
+    ignore(system ("cp "^coverage_exename^" "^coverage_exename^".neg"));
+    for i = 1 to !sample_runs do (* run the positive tests *)
+      for i = 1 to !pos_tests do
+        ignore(self#internal_test_case pos_exe
+                 coverage_sourcename (Positive i))
       done ;
-      (* collect the sampled results *)
-      let from_opannotate sample_path =
-        let regex = 
-          Str.regexp "^[ \t]*\\([0-9]\\).*:[ \t]*\\([0-9a-zA-Z]*\\):.*" 
-        in
-        let lst = get_lines sample_path in
-        let res = 
-          lfoldl
-            (fun acc line ->
-              if (Str.string_match regex line 0) then
-                let count = int_of_string (Str.matched_group 1 line) in
-                let addr = int_of_string ("0x"^(Str.matched_group 2 line)) in
-                  (addr, count) :: acc 
-              else acc) [] lst 
-        in
-          List.sort pair_compare res in
-      let drop_ids_only_to counts file path =
-        let fout = open_out path in
-          List.iter (fun (line,_) -> Printf.fprintf fout "%d\n" line) counts ;
-          close_out fout in
-      let pos_samp = pos_exe^".samp" in
-      let neg_samp = neg_exe^".samp" in
-      let mapping  = self#mem_mapping coverage_sourcename coverage_exename in
-        (* collect the samples *)
-        if not (Sys.file_exists pos_samp) then
-          ignore (system ("opannotate -a "^pos_exe^">"^pos_samp)) ;
-        if not (Sys.file_exists neg_samp) then
-          ignore (system ("opannotate -a "^neg_exe^">"^neg_samp)) ;
-        (* do a Guassian blur on the samples and convert to LOC *)
-        let combine_pos = 
-          Gaussian.blur Gaussian.kernel (from_opannotate pos_samp) 
-        in
-        let combine_neg = 
-          Gaussian.blur Gaussian.kernel (from_opannotate neg_samp) 
-        in
-          drop_ids_only_to
-            (self#combine_coverage combine_pos mapping) 
-            pos_exe !fix_path ;
-          drop_ids_only_to (self#combine_coverage combine_neg mapping)
-            neg_exe !fault_path
+      for i = 1 to !neg_tests do
+        ignore(self#internal_test_case neg_exe coverage_sourcename (Negative i))
+      done ;
+    done ;
+    (* collect the sampled results *)
+    let from_opannotate sample_path =
+      let regex =
+        Str.regexp "^[ \t]*\\([0-9]\\).*:[ \t]*\\([0-9a-zA-Z]*\\):.*"
+      in
+      let lst = get_lines sample_path in
+      let res =
+        lfoldl
+          (fun acc line ->
+             if (Str.string_match regex line 0) then
+               let count = int_of_string (Str.matched_group 1 line) in
+               let addr = int_of_string ("0x"^(Str.matched_group 2 line)) in
+               (addr, count) :: acc
+             else acc) [] lst
+      in
+      List.sort pair_compare res in
+    let drop_ids_only_to counts file path =
+      let fout = open_out path in
+      List.iter (fun (line,_) -> Printf.fprintf fout "%d\n" line) counts ;
+      close_out fout in
+    let pos_samp = pos_exe^".samp" in
+    let neg_samp = neg_exe^".samp" in
+    let mapping  = self#mem_mapping coverage_sourcename coverage_exename in
+    (* collect the samples *)
+    if not (Sys.file_exists pos_samp) then
+      ignore (system ("opannotate -a "^pos_exe^">"^pos_samp)) ;
+    if not (Sys.file_exists neg_samp) then
+      ignore (system ("opannotate -a "^neg_exe^">"^neg_samp)) ;
+    (* do a Guassian blur on the samples and convert to LOC *)
+    let combine_pos =
+      Gaussian.blur Gaussian.kernel (from_opannotate pos_samp)
+    in
+    let combine_neg =
+      Gaussian.blur Gaussian.kernel (from_opannotate neg_samp)
+    in
+    drop_ids_only_to
+      (self#combine_coverage combine_pos mapping)
+      pos_exe !fix_path ;
+    drop_ids_only_to (self#combine_coverage combine_neg mapping)
+      neg_exe !fault_path
 
   (** because fault localization on binary represntations uses oprofile,
       instrumenting for fault localization requires only that we output the
       program to disk.  HOWEVER, it requires as a precondition that oprofile be
       running. *)
-  method instrument_fault_localization 
-    coverage_sourcename coverage_exename coverage_outname =
+  method instrument_fault_localization
+      coverage_sourcename coverage_exename coverage_outname =
     debug "binRep: computing fault localization information\n" ;
     debug "binRep: ensure oprofile is running\n" ;
     self#output_source coverage_sourcename ;
 
-  (**/**)
-  (* the simpleRep compute_localization throws a fail, so we explicitly dispatch
-     to faultLocSuper here *)
+    (**/**)
+    (* the simpleRep compute_localization throws a fail, so we explicitly dispatch
+       to faultLocSuper here *)
   method compute_localization () = faultlocSuper#compute_localization ()
   method get_compiler_command () = faultlocSuper#get_compiler_command ()
 
-(**/**)
+  (**/**)
 
 end
