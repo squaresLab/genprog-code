@@ -61,8 +61,8 @@ let verbose = ref false
 
 let debug fmt =
   let k result = begin
-    output_string Pervasives.stdout result ;
-    flush Pervasives.stdout ;
+    output_string Stdlib.stdout result ;
+    flush Stdlib.stdout ;
   end in
   Printf.kprintf k fmt
 
@@ -213,7 +213,7 @@ let event_loop ss_connection = begin
             Hashtbl.add connections client_socket new_connection
 
           | Reading ->
-            let amount = recv read_socket buffer 0 buffer_len [] in
+            let amount = recv read_socket (Bytes.of_string buffer) 0 buffer_len [] in
             if amount = 0 then begin
               my_close read_socket
             end else begin
@@ -241,7 +241,7 @@ let event_loop ss_connection = begin
           match c.state with
           | Saving
           | Writing ->
-            let payload_string = c.write_payload in
+            let payload_string = (Bytes.of_string c.write_payload) in
             let offset, length = c.write_offset in
             let to_send = length - offset in
             let amount =

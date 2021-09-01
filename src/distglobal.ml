@@ -44,6 +44,7 @@ open Unix
 
 (** number of participating nodes *)
 let num_comps = ref 2
+
 (** port for the server *)
 let server_port = ref 65000
 let server_socket = socket PF_INET SOCK_STREAM 0
@@ -68,9 +69,9 @@ let readall sock size =
         _readall accum
       end
       else
-        _readall ((String.sub buffer 0 currcount)::accum)
+        _readall ((String.sub (Bytes.to_string buffer) 0 currcount)::accum)
     else
-      ((String.sub buffer 0 currcount)::accum)
+      ((String.sub (Bytes.to_string buffer) 0 currcount)::accum)
   in
   String.concat "" (List.rev (_readall []))
 
@@ -111,7 +112,7 @@ let fullread sock =
 let fullsend sock str =
   let len = String.length(str) in
   let newstr = Printf.sprintf "%4d%s" len str in
-  my_send sock newstr 0 (len+4) []
+  my_send sock (Bytes.of_string newstr) 0 (len+4) []
 
 (** Performs a select on the socketlist, reads all available data from those
     that return, and spins until all sockets in socketlist have been read from
