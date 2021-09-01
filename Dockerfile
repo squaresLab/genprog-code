@@ -15,9 +15,10 @@ RUN apt-get update && \
       m4 && \
     echo "yes" >> /tmp/yes.txt && \
     opam init --disable-sandboxing -y < /tmp/yes.txt && \
-    opam switch create 4.05.0 && \
-    opam switch 4.05.0 && \
-    opam install -y cil
+    opam switch create 4.12.0 && \
+    opam switch 4.12.0 && \
+    opam install -y num && \
+    opam pin -y cil https://github.com/squareslab/cil.git
 
 RUN mkdir -p /opt/genprog
 WORKDIR /opt/genprog
