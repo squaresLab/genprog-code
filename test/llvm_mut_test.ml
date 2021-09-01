@@ -1,6 +1,6 @@
 (* Load mutate and compile an ASM .s file, return 0 on success *)
 let main () = begin
-  let rep = (new Llvmrep.llvmRep) in
+  let rep = new Llvmrep.llvmRep in
     (* load *)
     rep#from_source "gcd.ll";
     (* mutate *)

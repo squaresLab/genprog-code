@@ -494,7 +494,7 @@ let stmt_to_typelabel (s : Cil.stmt) =
   let s' = { s with skind = skind ; labels = labels } in
   let doc = dn_stmt () s' in
   let str = Pretty.sprint ~width:80 doc in
-  let it = (labels, skind, str) in
+  let it = labels, skind, str in
   if Hashtbl.mem typelabel_ht str then begin
     Hashtbl.find typelabel_ht str , it
   end else begin

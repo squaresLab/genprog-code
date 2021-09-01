@@ -230,7 +230,7 @@ let note_success (rep : ('a,'b) Rep.representation)
 let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
   if incoming_pop <> [] then debug "search: incoming population IGNORED\n" ;
 
-  if (not !disable_reduce_fix_space) then begin
+  if not !disable_reduce_fix_space then begin
     debug "search: reduce_fix_space\n";
     original#reduce_fix_space () ;
   end;
@@ -494,10 +494,10 @@ let initialize_ga
   (* prepare the original/base representation for search by modifying the
      search space and registering all available mutations.*)
 
-  if (not !disable_reduce_search_space) then
+  if not !disable_reduce_search_space then
     original#reduce_search_space (fun _ -> true) (not (!promut <= 0));
 
-  if (not !disable_reduce_fix_space) then
+  if not !disable_reduce_fix_space then
     original#reduce_fix_space ();
 
   original#register_mutations
@@ -988,13 +988,13 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
   debug "search: ww_adaptive_1 begins (time = %f)\n" time ;
   if incoming_pop <> [] then debug "search: incoming population IGNORED\n" ;
 
-  if (!excluded_edits_str <> "") then begin
+  if !excluded_edits_str <> "" then begin
     excluded_edits := (Str.split (Str.regexp "[ \t]+") !excluded_edits_str)
   end ;
 
   (* Eagerly rule out equivalent edits. This shrinks the set
    * #append_sources will return, etc. *)
-  if (not !disable_reduce_fix_space) then
+  if not !disable_reduce_fix_space then
     original#reduce_fix_space () ;
 
   let time2 = Unix.gettimeofday () in
@@ -1035,7 +1035,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
   if(List.length !excluded_edits) > 0 then begin
     deletes := List.filter
         (fun (Delete(src),_,_) ->
-           let app_str = (Printf.sprintf "d(%d)" src) in
+           let app_str = Printf.sprintf "d(%d)" src in
            not (List.mem app_str !excluded_edits))
         !deletes
   end ;
@@ -1057,7 +1057,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
             rep#append dest src;
             rep
           in
-          let this_append = ((Append(dest,src)),thunk, w1) in
+          let this_append = (Append(dest,src)),thunk, w1 in
           appends := this_append :: !appends
         ) appsrc ;
     ) fault_localization ;
@@ -1065,7 +1065,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
   if(List.length !excluded_edits) > 0 then begin
     appends := List.filter
         (fun (Append(dest,src),_,_) ->
-           let app_str = (Printf.sprintf "a(%d,%d)" dest src) in
+           let app_str = Printf.sprintf "a(%d,%d)" dest src in
            not (List.mem app_str !excluded_edits))
         !appends
   end ;
@@ -1249,7 +1249,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
     in
     let first_k, rest = split_nth remaining k in
     let first_k = List.sort my_compare first_k in
-    let best_k = (walk first_k rest) in
+    let best_k = walk first_k rest in
     best_k
   in
 
@@ -1264,7 +1264,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
       (* pick the best edit, based on the model *)
       debug "search: ww_adaptive: finding best\n" ;
       let t1 = Unix.gettimeofday () in
-      let (edit, thunk, weight) = Stats2.time "find_best_edit"
+      let edit, thunk, weight = Stats2.time "find_best_edit"
           find_best_edit remaining in
       let t2 = Unix.gettimeofday () in
       debug "search: ww_adaptive: found best (time_taken = %g)\n" (t2 -. t1) ;
@@ -1316,7 +1316,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
 (**
 *)
 let geometric (original : ('a,'b) Rep.representation) incoming_pop =
-  if (not !disable_reduce_fix_space) then begin
+  if not !disable_reduce_fix_space then begin
     debug "search: reduce_fix_space\n";
     original#reduce_fix_space () ;
   end;
@@ -1352,7 +1352,7 @@ let geometric (original : ('a,'b) Rep.representation) incoming_pop =
     @param incoming_pop ignored
 *)
 let pd_exploit (original : ('a,'b) Rep.representation) incoming_pop =
-  if (not !disable_reduce_fix_space) then begin
+  if not !disable_reduce_fix_space then begin
     debug "search: reduce_fix_space\n";
     original#reduce_fix_space () ;
   end;
@@ -1468,7 +1468,7 @@ let pd_exploit (original : ('a,'b) Rep.representation) incoming_pop =
     @param incoming_pop ignored
 *)
 let pd_explore (original : ('a,'b) Rep.representation) incoming_pop =
-  if (not !disable_reduce_fix_space) then begin
+  if not !disable_reduce_fix_space then begin
     debug "search: reduce_fix_space\n";
     original#reduce_fix_space () ;
   end;

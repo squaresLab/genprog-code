@@ -1459,7 +1459,7 @@ let smart_alias_query (l : label) (l' : label) : bool =
     B.filter (fun (b : lblinfo bound) -> i = b.index)
   in
   let rec simulate c l l' =
-    let config = (c, get_label_stamp l, get_label_stamp l') in
+    let config = c, get_label_stamp l, get_label_stamp l' in
     if U.equal (l, l') then
       begin
         if !debug then

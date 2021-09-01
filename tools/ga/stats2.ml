@@ -31,7 +31,7 @@ let time name f a =
   let finished () = 
     let myrec = List.hd !stack in
     let now = Unix.gettimeofday () in 
-    let my_delta = (now -. myrec.start) in 
+    let my_delta = now -. myrec.start in 
     let my_time = my_delta -. (myrec.holes) in 
     stack := List.tl !stack ; 
     begin 
@@ -62,7 +62,7 @@ let print chn msg =
   Printf.fprintf chn "  %-30s %8s %7s = %s\n"  
     "Activity Name" "Count" "Seconds" "Percent of Total Time" ;
   List.iter (fun (l,t) ->
-    let perc = (100.0 *. t /. total) in 
+    let perc = 100.0 *. t /. total in 
     if perc > 0.01 then 
       Printf.fprintf chn "  %-30s %8d %7.3f = %g%%\n" l 
         (Hashtbl.find invocations l) t perc 

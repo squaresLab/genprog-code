@@ -355,7 +355,7 @@ class elfRep = object (self : 'self_type)
       let temp = Array.get !bytes i in
       Array.set !bytes i (Array.get !bytes j) ;
       Array.set !bytes j temp ;
-      if (starting_length > (Array.length !bytes)) then
+      if starting_length > (Array.length !bytes) then
         debug "ERROR: swap changed the byte length %d->%d\n"
           starting_length (Array.length !bytes);
     with
@@ -379,17 +379,17 @@ class elfRep = object (self : 'self_type)
         let removed = List.length (Array.get !bytes i) in
         let length = Array.length !bytes in
         let replacement =
-          if (removed > 0) then Array.make removed [144]
+          if removed > 0 then Array.make removed [144]
           else Array.make 1 [] in
-        if (i == 0) then
+        if i == 0 then
           bytes := Array.append replacement (Array.sub !bytes 1 (length - 1))
-        else if (i == (length - 1)) then
+        else if i == (length - 1) then
           bytes := Array.append (Array.sub !bytes 0 (length - 1)) replacement
         else
           bytes := Array.append
               (Array.append (Array.sub !bytes 0 i) replacement)
               (Array.sub !bytes (i + 1) ((length - i) - 1)) ;
-        if (starting_length > (Array.length !bytes)) then
+        if starting_length > (Array.length !bytes) then
           debug "ERROR: delete shortened bytes (%d->%d) length:%d i:%d\n"
             starting_length (Array.length !bytes) length i;
       with
@@ -418,7 +418,7 @@ class elfRep = object (self : 'self_type)
       (* delete an appropriate amount of nop's *)
       let max x y = if x > y then x else y in
       for p = 0 to max i ((Array.length !bytes) - i) do
-        if (!reps > 0) then begin
+        if !reps > 0 then begin
           if((i+p) < (Array.length !bytes)) then begin
             match Array.get !bytes (i+p) with
             | [0; 0; 160; 225] when !elf_risc -> begin
