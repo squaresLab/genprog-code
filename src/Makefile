@@ -18,7 +18,9 @@ endif
 ifneq ($(MAKECMDGOALS),clean)
   ifeq ($(CIL),)
     ifneq ($(shell type ocamlfind 2> /dev/null),)
-        OCAML_OPTIONS = $(shell ocamlfind query cil 2> /dev/null)
+		OCAML_OPTIONS := \
+			$(shell ocamlfind query findlib 2> /dev/null) \
+			$(shell ocamlfind query cil 2> /dev/null)
     endif
   endif
   ifeq ($(OCAML_OPTIONS),)
@@ -103,8 +105,6 @@ BASE_MODULES = \
   asmrep.cmo \
   minimization.cmo \
   cilprinter.cmo \
-  golf.cmo \
-  ptranal.cmo \
   knownfuns.cmo \
   progeq.cmo \
   lasetemplates.cmo \
@@ -125,7 +125,9 @@ STANDARD_LIBS = \
 	bigarray.cmxa \
 	unix.cmxa \
 	str.cmxa \
-	nums.cmxa
+	nums.cmxa \
+	dynlink.cmxa \
+	findlib.cmxa 
 
 # This .PHONY target stores the current repository version into an OCaml file
 # so that we can report it in the debug log. It is .PHONY to ensure that make
@@ -154,7 +156,7 @@ version.ml:
 lib: ../obj/genprog.cmxa
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) cil.cmxa $^
+	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) cil.cmxa pta.cmxa liveness.cmxa $^
 
 repair.chroot:  $(REPAIR_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) cil.cmxa $^ -cc "gcc -Wl,-dynamic-linker,/lib64-20/ld-linux-x86-64.so.2,-rpath=/lib64-20"

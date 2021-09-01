@@ -65,7 +65,7 @@ let main ()= begin
   let info_tbl = Hashtbl.create !num_comps in
   (* Adds all client computers to client_tbl (and set info_tbl to its
      default)*)
-  let rec getcomps sock =
+  let getcomps sock =
     for currcomp=0 to (!num_comps-1) do
       debug "Awaiting connection from client %d of %d\n"
         currcomp (!num_comps-1) ;

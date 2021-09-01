@@ -43,10 +43,6 @@
     utilities are self-explanatory/short, thus minimal commenting. *)
 open Str
 open Printf
-open Hashtbl
-open List
-open Unix
-open Pervasives
 
 (**/**)
 (* whether we're printing for the phone demo *)
@@ -226,7 +222,7 @@ let split_base_subdirs_ext name =
   with _ -> "",name,""
 
 (** compares the first elements of each pair *)
-let pair_compare (a,_) (b,_) = compare a b
+let pair_compare (a,_) (b,_) = Pervasives.compare a b
 
 (** Returns the elements of 'lst' in a random order. *)
 let random_order lst =
