@@ -365,8 +365,7 @@ for those benchmarks to make use of the refactored version of the command line
 options.  Thus, the scenario tarball config files contain a number of deprecated
 options.  **HOWEVER:** repair handles a large number of deprecated options, so
 you can still run repair on those scenarios, just be mindful that not all of
-those options are currently available in those exact forms.  I will fix this
-soon. (Jeremy notes: I don't know if this has been fixed as of 6/3/17)
+those options are currently available in those exact forms. 
 
 5. Misc observations
 --------------------
