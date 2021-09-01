@@ -12,13 +12,9 @@ GenProg: Evolutionary Program Repair
 - Modified by: Jeremy Lacomis
 - Contact: <clegoues@cs.cmu.edu>, <jlacomis@cmu.edu>
 - Date Created: July 11, 2008
-- Date Modified: June 3, 2017
+- Date Modified: Sept 1, 2021
 
 Current version of GenProg: 3.2
-
-This README contains a trail-map for the use and extension of "repair", used for
-the GenProg experiments that appear in ASE 2013 (and others, and certainly all
-results thereafter, at least for now).
 
 This README describes the use of GenProg v3.2, a.k.a. "repair." Previous
 versions exist and are described elsewhere. These instructions are very similar
@@ -27,9 +23,7 @@ should work as they did previously; older READMEs from previous releases contain
 detailed explanations of the relavent options.
 
 These instructions primarily address the repair of C programs using the standard
-genetic algorithm.  Other search strategies and language front-ends exist.  In
-the interest of expediency, I am focusing on the type of repair I understand the
-best and for which results are appearing soonest.  Many of these instructions
+genetic algorithm.  Other search strategies and language front-ends exist. Many of these instructions
 translate directly to different language front-ends, however, so you should be
 able to figure out ASM/ELF level repair pretty trivially if you understand
 C-level repair. Previous READMEs advise contacting Eric Schulte
@@ -41,7 +35,7 @@ directory has changed to reflect the new ASM code.
 
 These instructions include mention of how to compile for shader repair, but I
 unfortunately do not know how to run those experiments.  Email Wes for pointers
-to who to ask (<weimer@cs.virginia.edu>).
+to who to ask (<weimerw@umich.edu>).
 
 Refer to the README associated with the benchmarks for information and examples
 regarding the use of modify/repair on particular examples.
