@@ -162,7 +162,7 @@ repair.chroot:  $(REPAIR_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) cil.cmxa $^ -cc "gcc -Wl,-dynamic-linker,/lib64-20/ld-linux-x86-64.so.2,-rpath=/lib64-20"
 
 repair.byte: $(REPAIR_MODULES)
-	$(OCAMLC) -o $@ $(STANDARD_LIBS:.cmxa=.cma) cil.cma $^
+	$(OCAMLC) -o $@ $(STANDARD_LIBS:.cmxa=.cma) cil.cma pta.cma liveness.cma $^
 
 edit: $(BASE_MODULES:.cmo=.cmx) edit.cmx
 	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) cil.cmxa $^
