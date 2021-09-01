@@ -69,7 +69,7 @@ let average_tracking a b =
 let new_tracking () = 
   { current = new_counters () ; at_last_fitness = new_counters (); } 
 
-let print_best_output = ref (fun () -> ()) 
+let print_best_output = ref ident 
 
 
 (* we copy all debugging output to a file and to stdout *)
@@ -405,7 +405,7 @@ let rec mutation ?(force=false) (* require a mutation? *)
              (i : individual) 
              (prob : float) 
              (* returns *) : individual =
-  let (file,ht,count,path,track) = i in
+  let file,ht,count,path,track = i in
   let new_track = copy track in 
   new_track.current.mut <- new_track.current.mut + 1 ;
   Stats2.time "mutation" (fun () -> 
@@ -499,8 +499,8 @@ let rec mutation ?(force=false) (* require a mutation? *)
 let crossover (i1 : individual) 
               (i2 : individual) 
               (* returns *) : (individual * individual) =
-  let (file1,ht1,count1,path1,track1) = i1 in 
-  let (file2,ht2,count2,path2,track2) = i2 in 
+  let file1,ht1,count1,path1,track1 = i1 in 
+  let file2,ht2,count2,path2,track2 = i2 in 
   let new_track1 = copy track1 (* average_tracking track1 track2 *) in 
   let new_track2 = copy track2 (* average_tracking track1 track2 *) in 
   new_track1.current.xover <- track1.current.xover + 1 ; 
@@ -612,7 +612,7 @@ let random_fitness = ref false
 let fitness (i : individual) 
             (* returns *) : float = 
   incr total_fitness_evals;
-  let (file,ht,count,path,tracking) = i in 
+  let file,ht,count,path,tracking = i in 
   Stats2.time "fitness" (fun () -> 
   try 
     let a1,a2,a3,a4,a5,a6 =
@@ -918,8 +918,8 @@ let ga_step (original : individual)
    *) 
   let rec walk lst = match lst with
   | mom :: dad :: rest ->
-	  let (file1,ht1,count1,path1,track1) = mom in
-		if ((pred (List.length path1)) > 10000) then (* CLG: disable temporarily *)
+	  let file1,ht1,count1,path1,track1 = mom in
+		if (pred (List.length path1)) > 10000 then (* CLG: disable temporarily *)
 		  let kid1,kid2 = crossover mom dad in 
 			[ mom; dad; kid1 ; kid2 ] :: (walk rest)
 		else 
@@ -968,7 +968,7 @@ let mut_rb (indiv : individual)
 
   let save (i : individual)
            : unit =
-    let (file,ht,count,path,tracking) = i in 
+    let file,ht,count,path,tracking = i in 
     let neut_count = ref 0 in
     let source_out = Printf.sprintf
       "%s/%05d.c" !save_neutral !neut_count in 
@@ -979,7 +979,7 @@ let mut_rb (indiv : individual)
     
   (* filter non-neutral individuals *)
   let neutral = ref (
-    List.filter (fun (member) -> fitness member = !neutral_fitness )
+    List.filter (fun member -> fitness member = !neutral_fitness )
                 (initial_population indiv num) ) in 
     
     (* possibly save neutral individuals out to file *)
@@ -1150,7 +1150,7 @@ let main () = begin
     end ; 
 
 
-    let source_out = (!filename ^ "-baseline.c") in 
+    let source_out = !filename ^ "-baseline.c" in 
     baseline_file := source_out ; 
     let fout = open_out source_out in 
     dumpFile defaultCilPrinter fout source_out file ;
@@ -1224,7 +1224,7 @@ let main () = begin
 		  flush !debug_out ;
 		  (*v_*)
 
-        let source_out = (!filename ^ "-" ^ !input_params ^ "-best.c") in 
+        let source_out = !filename ^ "-" ^ !input_params ^ "-best.c" in 
         let fout = open_out source_out in 
         dumpFile defaultCilPrinter fout source_out best_file ;
         close_out fout ; 
@@ -1249,8 +1249,8 @@ let main () = begin
         ((float !total_number_of_micromutations) /. 
         (float !total_number_of_macromutations)) ; 
 
-      let comp_fail = ((Int32.to_float (Int32.of_int !compile_fail)) /. (Int32.to_float (Int32.of_int !compile_tried))) in
-      let comp_fail2 = ((Int32.to_float (Int32.of_int !compile_fail)) /. (Int32.to_float (Int32.of_int !total_fitness_evals))) in
+      let comp_fail = (Int32.to_float (Int32.of_int !compile_fail)) /. (Int32.to_float (Int32.of_int !compile_tried)) in
+      let comp_fail2 = (Int32.to_float (Int32.of_int !compile_fail)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
       debug "Percent of unique variants that failed to compile: %d/%d = %g\n" 
         !compile_fail !compile_tried comp_fail; 
       debug "Percent possibly-cached fitness evals that failed to compile: %d/%d = %g\n" 

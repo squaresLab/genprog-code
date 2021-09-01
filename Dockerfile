@@ -27,7 +27,9 @@ ADD src src
 RUN mkdir bin && \
     eval $(opam config env) && \
     make && \
+    make -C src repair.byte && \
     mv src/repair bin/genprog && \
+    mv src/repair.byte bin/genprog.byte && \
     ln -s bin/genprog bin/repair && \
     mv src/distserver bin/distserver && \
     mv src/nhtserver bin/nhtserver

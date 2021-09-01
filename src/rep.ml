@@ -1159,8 +1159,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       abort "cachingRepresentation: sanity check failed (compilation)\n"
     end ;
     let tests =
-      (lmap (fun i -> (Negative i, (fun b -> b))) (1 -- !neg_tests))
-      @ (lmap (fun i -> (Positive i, (fun b -> not b))) (1 -- !pos_tests))
+      (lmap (fun i -> Negative i, (fun b -> b)) (1 -- !neg_tests))
+      @ (lmap (fun i -> Positive i, (fun b -> not b)) (1 -- !pos_tests))
     in
     liter (fun (t, failed) ->
         let name = test_name t in
@@ -2407,8 +2407,8 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     let fault_fn id (pos,neg) lst =
       match !fault_scheme with
         "path" | "default" | "clone" -> begin
-          if ((pos > 0.0) && (neg > 0.0)) then (id,!positive_path_weight) :: lst
-          else  if (neg > 0.0) then (id,!negative_path_weight) :: lst
+          if (pos > 0.0) && (neg > 0.0) then (id,!positive_path_weight) :: lst
+          else  if neg > 0.0 then (id,!negative_path_weight) :: lst
           else (id,0.0) :: lst
         end
       | "uniform" -> (id, 1.0) :: lst
@@ -2440,7 +2440,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
           (*given a weighted path, read in a CC file (if one is specified) and recompute weights *)
           self#read_clone_file ();
           let ochan = open_out "partition.ht" in (* CLG assumes this is for debugging? *)
-          Hashtbl.iter (fun id (set,weight) -> (fprintf ochan "%d %f %s" id weight (WeightSet.fold (fun (elem, w) accum -> (accum ^ (string_of_int elem) ^ " ")) set ""))) partitions
+          Hashtbl.iter (fun id (set,weight) -> fprintf ochan "%d %f %s" id weight (WeightSet.fold (fun (elem, w) accum -> (accum ^ (string_of_int elem) ^ " ")) set "")) partitions
         end
     in
     let _ = (* fix localization *)
@@ -2504,8 +2504,8 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       "tarantula" | "jaccard" | "ochiai" | "clone" ->
       let cacheout = open_out ("results_"^(!fault_scheme)^".txt") in
       let ochan = open_out "cachetable.txt" in
-      let printer = (fun (id) (pos,neg) -> (fprintf ochan "%d %f %f\n" id pos neg)) in
-      let printer2 = (fun (id,weight) -> (fprintf cacheout "%d %d %f %s\n" (snd(self#source_line_of_atom_id id)) id weight (fst(self#source_line_of_atom_id id)))) in
+      let printer = fun id (pos,neg) -> (fprintf ochan "%d %f %f\n" id pos neg) in
+      let printer2 = fun (id,weight) -> (fprintf cacheout "%d %d %f %s\n" (snd(self#source_line_of_atom_id id)) id weight (fst(self#source_line_of_atom_id id))) in
       Hashtbl.iter printer atom_test_coverage;
       close_out ochan;
       List.iter printer2 !fault_localization;

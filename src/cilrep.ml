@@ -3476,7 +3476,7 @@ let _ =
         Printf.fprintf chan "FILE * _coverage_fout;\n";
         Printf.fprintf chan "int main() { return 0; }\n";
         close_out chan;
-        let temp_variant = (new patchCilRep) in
+        let temp_variant = new patchCilRep in
 
         let preprocessed = Filename.temp_file "tmp" ".c" in
         debug "cilRep: preprocessing IO function signatures: %s %s\n"

@@ -198,7 +198,7 @@ end
  * INPUT: Line of code to insert as string
  * INPUT: Line number where code is to be inserted *)
 let rec insert_line_helper (theList : string list) line line_number = begin
-  if ( line_number = 1 ) then line::theList else
+  if  line_number = 1  then line::theList else
     match theList with
       []  -> []
     |   h::t    -> h::( insert_line_helper t line (line_number - 1))
@@ -241,7 +241,7 @@ end
 let rec delete_line_helper (theList : string list) line_number = begin
   match theList with
     []  -> []
-  |   h::t    -> if ( line_number = 1) then t
+  |   h::t    -> if  line_number = 1 then t
     else h::( delete_line_helper t ( line_number - 1) )
 end
 

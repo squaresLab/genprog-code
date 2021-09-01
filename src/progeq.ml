@@ -513,7 +513,7 @@ let rec partition_block files block edit_effects
     let all_stmts = ref [] in
     let _ = visitCilBlock (new collectStatements all_stmts) block in
     List.iter (fun s ->
-        if (List.exists (fun part -> List.mem s part) !final_result) then
+        if List.exists (fun part -> List.mem s part) !final_result then
           ()
         else
           final_result := [s] :: !final_result

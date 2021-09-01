@@ -2,7 +2,7 @@ open Global
 
 (* Load mutate and compile an ASM .s file, return 0 on success *)
 let main () = begin
-  let rep = (new Asmrep.asmRep) in
+  let rep = new Asmrep.asmRep in
     (* load *)
     rep#from_source "gcd.s";
     (* read in fault localization information *)
