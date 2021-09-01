@@ -15,6 +15,8 @@ RUN apt-get update && \
       m4 && \
     echo "yes" >> /tmp/yes.txt && \
     opam init --disable-sandboxing -y < /tmp/yes.txt && \
+    opam switch create 4.05.0 && \
+    opam switch 4.05.0 && \
     opam install -y cil
 
 RUN mkdir -p /opt/genprog
