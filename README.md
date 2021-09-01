@@ -9,12 +9,10 @@ GenProg: Evolutionary Program Repair
 [![Build Status](https://travis-ci.org/squaresLab/genprog-code.svg?branch=master)](https://travis-ci.org/squaresLab/genprog-code)
 
 - Author: Claire Le Goues
-- Modified by: Jeremy Lacomis
+- Modified by: Jeremy Lacomis, Claire Le Goues
 - Contact: <clegoues@cs.cmu.edu>, <jlacomis@cmu.edu>
 - Date Created: July 11, 2008
 - Date Modified: Sept 1, 2021
-
-Current version of GenProg: 3.2
 
 This README describes the use of GenProg v3.2, a.k.a. "repair." Previous
 versions exist and are described elsewhere. These instructions are very similar
@@ -23,115 +21,71 @@ should work as they did previously; older READMEs from previous releases contain
 detailed explanations of the relavent options.
 
 These instructions primarily address the repair of C programs using the standard
-genetic algorithm.  Other search strategies and language front-ends exist. Many of these instructions
-translate directly to different language front-ends, however, so you should be
-able to figure out ASM/ELF level repair pretty trivially if you understand
-C-level repair. Previous READMEs advise contacting Eric Schulte
-(<eschulte@cs.unm.edu>) for questions about neutral-space search or
-ASM/ELF-level repair, but the ASM representation has completely changed. For
-questions about ASM repair, you should email Jeremy Lacomis
-(<jlacomis@cmu.edu>). The [README.md](src/README.md) file in the `src/`
-directory has changed to reflect the new ASM code.
+genetic algorithm. Many of these instructions translate directly to different
+language front-ends, however, so you should be able to figure out ASM/ELF level
+repair pretty trivially if you understand C-level repair. For questions about
+ASM repair, email Jeremy Lacomis (<jlacomis@cmu.edu>) (or file an issue).
 
-These instructions include mention of how to compile for shader repair, but I
-unfortunately do not know how to run those experiments.  Email Wes for pointers
-to who to ask (<weimerw@umich.edu>).
+These instructions include mention of how to compile for shader repair, but the
+authors of this README unfortunately do not know how to run those experiments.
+Email Wes for pointers to who to ask (<weimerw@umich.edu>).
 
 Refer to the README associated with the benchmarks for information and examples
 regarding the use of modify/repair on particular examples.
 
 Caveat 0: Read the entirety of this README before diving into a particular
-benchmark because I do not repeat instructions applying to all experiments in
+benchmark because we do not repeat instructions applying to all experiments in
 the benchmark-specific READMEs.
 
 Caveat 1: GenProg operates on pre-processed code, meaning that the generated
 patches are sometimes non-obvious.  Compare pre-processed code to original code
 to get a handle on what is going on. 
 
-Caveat 2: These instructions are not comprehensive, for which I apologize.
+Caveat 2: These instructions are not comprehensive, for which we apologize.
 repair has a huge number of command-line options and implemented behaviors.
-I've tried to include enough info to get you started.
-
-0. Benchmark program tarballs
------------------------------
-
-If you'd like to use the tarballs associated with the repair scenarios we ran
-for ICSE 2012 (we used similar scenarios but with different parameters for GECCO
-2012) and ASE 2013 "out of the box", you will need to use them with the VM
-images we provide, as they assume a certain directory structure.  Check out the
-instructions associated with the disk image we provide on
-genprog.cs.virginia.edu on how to set up the VirtualBox image.
+We've tried to include enough info to get you started.
 
 1. Basics
 ---------
 
-The genprog prototype assumes bash scripting and standard utilities; Windows
-most likely requires cygwin.  Some number of experiments can be performed in OS
-X, with some extra legwork (Jeremy's note: the original version of this README
-mentions that compiling CIL for OS X is challenging, but I have not have much
-trouble with version 1.7.3)
 
-Ensure that sh is symlinked to bash, not dash (as is the default on Ubuntu), on
-your machine. (Jeremy's note: As of 2017 I'm not sure this matters any more)
+This code is largely written in [OCaml][ocaml] with some C and bash scripts; it
+assumes various standard utilities. This version of the README describes
+compiling repair using OCaml 4.05.0 (consult the latest development branch for
+code that works with the latest version).
 
-Our prototype is written in [OCaml][ocaml].  It should work for releases
-starting from at least 3.09.3; the most recent version of OCaml is 4.04.x.  Our
-code has been shown to work with version 4.02.3, but it should work with the
-latest versions as well.
+We have been able to build this in general linux environments, including OS X.
+It was once the case that you needed to ensure sh is symlinked to bash rather
+than dash (the default on Ubuntu); as of 2017- we're not sure this matters any
+more.  But if you run into trouble, try that.
 
-2. Building
+1. Building
 -----------
+
+0. OCaml
+
+   We use [opam](https://opam.ocaml.org/) to install and manage OCaml.  This
+   release requires 4.05.0 or earlier.  Follow opam instructions to make,
+   initialize, and switch to a 4.05.0 switch.
 
 1. CIL
 
     We use [CIL](https://github.com/cil-project/cil) to parse C and manipulate
-    ASTs. Anything newer than CIL 1.7.3 should work. The easiest way to get CIL
-    is with [opam][] by running:
+    ASTs. CIL is abandonware; the last version appears to be 1.7.3.  For this
+    code, it should suffice to do: 
 
         opam install cil
 
-    If you install CIL using opam, make sure that the CIL environment variable
-    isn't set and move on the step 2. If you choose to skip opam, the following
-    instructions should work. Make sure that you have the OCaml compiler, perl, and [ocamlfind][]
-    installed and run:
-
-       wget http://downloads.sourceforge.net/project/cil/cil/cil-1.7.3.tar.gz
-       tar xvzf cil-1.7.3.tar.gz
-       cd cil-1.7.3
-       ./configure
-       make
-       make cillib
-       export CIL=`pwd` # see explanation below
-       cd ..
-
-    `make cillib` is the important part, so if `make` chokes, try just `make
-    cillib`
-
-    Set the environment variable CIL to point to whereever cil.spec ends up, or
-    put it in your shell startup script:
-
-        export CIL=/home/claire/cil
-
-    Claire notes: I have had trouble getting later versions of CIL and/or OCaml
-    to build CIL in native code (producing .cmx and .cmxa).  A hack solution to
-    this is to put `NATIVECAML := 1` somewhere near the top of the Makefile,
-    unguarded by any ifdefs.
-    
-    Jeremy notes: I haven't had any problems with this, so it might not be a
-    problem with newer versions of CIL.
-
     The included cil-cg.tar.gz tarball is a version of CIL with extensions to
-    support the parsing of OpenGL shaders.  Compile in the same way as you do
-    for CIL, change the CIL variable, make clean, export USE_PELLACINI=true, and
-    re-make repair to use it. (Jeremy notes: I think this version of CIL is
-    based off of 1.3.7, so it might not work any more.)
+    support the parsing of OpenGL shaders. We don't believe it will work any
+    more, but if you get it to build, use the CIL environment variable
+    referenced in the Makefile to point to the installation, export
+    USE_PELLACINI=true, and re-make repair to use it. 
     
 2. Building repair 
 
-    Once CIL is installed and the environment variable set, `make` in the
-    genprog-code/src directory should do the trick.  Make sure the
-    `OCAML_OPTIONS` line that points to the obj directory for CIL is referencing
-    your distro (that is, change `x86_LINUX` to `x86_DARWIN` if you're on OS X).
+    `make`, either in this directory or the genprog-code/src directory should do
+    the trick. 
 
     The build process will produce several artifacts:
     * `repair`: the main GenProg repair program 
@@ -146,6 +100,13 @@ latest versions as well.
     * `testsuite`: runs the tests in `test/`.  The testsuite is a work in
      progress and thus I make no guarantees about its functionality; this
      documentation will be updated as it is.
+
+3. Docker
+
+   The provided Dockerfile will build a docker image based on your local version
+   of the code, otherwise roughly doing the above (OCaml 4.05, etc). Try:
+   
+        docker build -t squareslab/genprog .
 
 3. General "repair" roadmap
 ---------------------------
