@@ -14,11 +14,11 @@ GenProg: Evolutionary Program Repair
 - Date Created: July 11, 2008
 - Date Modified: Sept 1, 2021
 
-This README describes the use of GenProg v3.2, a.k.a. "repair." Previous
+This README describes the use of GenProg v4.0, a.k.a. "repair." Previous
 versions exist and are described elsewhere. These instructions are very similar
 to those associated with previous versions of repair. Command line options
 should work as they did previously; older READMEs from previous releases contain
-detailed explanations of the relavent options.
+detailed explanations of the relevant options.
 
 These instructions primarily address the repair of C programs using the standard
 genetic algorithm. Many of these instructions translate directly to different
@@ -48,11 +48,9 @@ We've tried to include enough info to get you started.
 1. Basics
 ---------
 
-
 This code is largely written in [OCaml][ocaml] with some C and bash scripts; it
-assumes various standard utilities. This version of the README describes
-compiling repair using OCaml 4.05.0 (consult the latest development branch for
-code that works with the latest version).
+assumes various standard utilities. This code was successfully built using
+4.12.0.  It definitely won't compile with any version pre-4.06.0.
 
 We have been able to build this in general linux environments, including OS X.
 It was once the case that you needed to ensure sh is symlinked to bash rather
@@ -64,17 +62,29 @@ more.  But if you run into trouble, try that.
 
 0. OCaml
 
-   We use [opam](https://opam.ocaml.org/) to install and manage OCaml.  This
-   release requires 4.05.0 or earlier.  Follow opam instructions to make,
-   initialize, and switch to a 4.05.0 switch.
+   We use [opam](https://opam.ocaml.org/) to install and manage OCaml. This
+   release assumes you are past 4.05.0 (we have most recently built it
+   successfully using 4.12.0). Follow opam instructions to make and initialize a
+   suitable ocaml installation switch. 
 
 1. CIL
 
     We use [CIL](https://github.com/cil-project/cil) to parse C and manipulate
-    ASTs. CIL is abandonware; the last version appears to be 1.7.3.  For this
-    code, it should suffice to do: 
+    ASTs. CIL is abandonware; the last version appears to be 1.7.3.  It does not
+    build after OCaml 4.05, and opam will complain if you try to install the
+    vanilla version.  
 
-        opam install cil
+    We have forked CIL and made minor updates to (a) get it to build post 4.05,
+    and (b) compute pointer analysis the way we want it to (addressing the
+    strong-update problem) in repair.  We recommend:
+
+        opam install num
+        opam pin cil https://github.com/squareslab/cil.git
+
+    (cil depends on num)
+
+    If you want to fork/install cil locally, you're of course welcome to do
+    that.  Your life will be easier if ocamlfind can find it.
 
     The included cil-cg.tar.gz tarball is a version of CIL with extensions to
     support the parsing of OpenGL shaders. We don't believe it will work any
@@ -86,6 +96,11 @@ more.  But if you run into trouble, try that.
 
     `make`, either in this directory or the genprog-code/src directory should do
     the trick. 
+
+    We like to go to src/ and do:
+       ./repair --help
+
+    To make sure it worked.
 
     The build process will produce several artifacts:
     * `repair`: the main GenProg repair program 
@@ -103,8 +118,9 @@ more.  But if you run into trouble, try that.
 
 3. Docker
 
-   The provided Dockerfile will build a docker image based on your local version
-   of the code, otherwise roughly doing the above (OCaml 4.05, etc). Try:
+   The provided Dockerfile is presently still the OCaml 4.05.0 version; if
+   Claire updates it she will update this README to indicate that the following
+   command should work: 
    
         docker build -t squareslab/genprog .
 
