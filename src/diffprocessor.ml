@@ -138,7 +138,7 @@ end
  * INPUT: Node ID to Node Hashtbl
  * INPUT: ID of a bad node *)
 let get_nearest_good_node ht node_id = begin
-  if (Hashtbl.mem node_id_to_cdiff_node node_id) then
+  if Hashtbl.mem node_id_to_cdiff_node node_id then
     (Hashtbl.find node_id_to_cdiff_node node_id)
   else begin
     let id_count = ref node_id in
@@ -158,7 +158,7 @@ let get_nearest_good_node ht node_id = begin
             let possible_val = Array.get parent_node.children i in
             if not (!found_flag) then
               (
-                if (Hashtbl.mem node_id_to_cdiff_node possible_val) then
+                if Hashtbl.mem node_id_to_cdiff_node possible_val then
                   (found_flag := true; found_id := possible_val)
               )
           done;
@@ -211,7 +211,7 @@ let get_last_bracket_line filename starting_line = begin
       (List.length file_lines)
     end
     else begin
-      let this_line = (List.nth file_lines current_line) in
+      let this_line = List.nth file_lines current_line in
       if List.for_all (fun x -> x="}") (Str.split whitespace this_line)
       then begin
         walk (current_line+1)
@@ -243,12 +243,12 @@ let build_action_list fn ht = begin
           let xflag = ref true in
           let yflag = ref true in
           let nodeX =
-            if (Hashtbl.mem node_id_to_cdiff_node x) then
+            if Hashtbl.mem node_id_to_cdiff_node x then
               Hashtbl.find node_id_to_cdiff_node x
             else (xflag := false; Hashtbl.find bad_node_id_to_cdiff_node x)
           in
           let nodeY =
-            if (Hashtbl.mem node_id_to_cdiff_node y) then
+            if Hashtbl.mem node_id_to_cdiff_node y then
               Hashtbl.find node_id_to_cdiff_node y
             else (yflag := false; Hashtbl.find bad_node_id_to_cdiff_node y)
           in
@@ -256,10 +256,10 @@ let build_action_list fn ht = begin
           let line_to_insert =
             if p=0 then
               let my_node =
-                if (!yflag) then nodeY
+                if !yflag then nodeY
                 else
                   (
-                    if (enable_nearest_good_node_search) then
+                    if enable_nearest_good_node_search then
                       (get_nearest_good_node ht (nodeY.id))
                     else nodeY
                   )
@@ -298,7 +298,7 @@ let build_action_list fn ht = begin
                * and get the line number from that. Or just report that we failed. Boohoo. *)
 
               (* The parent is good, but the children might not be. *)
-            if (Hashtbl.mem node_id_to_cdiff_node nodeY.id) then begin
+            if Hashtbl.mem node_id_to_cdiff_node nodeY.id then begin
               let parent_node = Hashtbl.find ht nodeY.id in
               let counter = ref 1 in
               let child_id = ref 0 in
@@ -310,15 +310,15 @@ let build_action_list fn ht = begin
                 Array.iter (fun child_ider ->
                     if (!counter)=p then (child_id := child_ider; incr counter) else incr counter;
                   ) parent_node.children ;
-                if (Hashtbl.mem node_id_to_cdiff_node !child_id) then (found_flag := true; p_temp := 0)
+                if Hashtbl.mem node_id_to_cdiff_node !child_id then (found_flag := true; p_temp := 0)
                 else decr p_temp ;
               done;
               let prev_child =
-                if (!found_flag) then Hashtbl.find node_id_to_cdiff_node !child_id
+                if !found_flag then Hashtbl.find node_id_to_cdiff_node !child_id
                 else nodeY
               in
               the_file := prev_child.filename;
-              if (enable_bracket_inclusion) then (get_last_bracket_line !the_file prev_child.last_line)
+              if enable_bracket_inclusion then (get_last_bracket_line !the_file prev_child.last_line)
               else (prev_child.last_line)
             end
             (* The parent is no good... Check the children. If everyone is bad, we suck and just
@@ -335,19 +335,19 @@ let build_action_list fn ht = begin
                 Array.iter (fun child_ider ->
                     if (!counter)=p then (child_id := child_ider; incr counter) else incr counter;
                   ) parent_node.children ;
-                if (Hashtbl.mem node_id_to_cdiff_node !child_id) then (found_flag := true; p_temp := 0)
+                if Hashtbl.mem node_id_to_cdiff_node !child_id then (found_flag := true; p_temp := 0)
                 else decr p_temp ;
               done;
               let the_node =
-                if (!found_flag) then Hashtbl.find node_id_to_cdiff_node !child_id
+                if !found_flag then Hashtbl.find node_id_to_cdiff_node !child_id
                 else
                   (
-                    if (enable_nearest_good_node_search) then (get_nearest_good_node ht nodeY.id)
+                    if enable_nearest_good_node_search then (get_nearest_good_node ht nodeY.id)
                     else nodeY
                   )
               in
               the_file := the_node.filename;
-              if (enable_bracket_inclusion) then
+              if enable_bracket_inclusion then
                 (
                   if not (Hashtbl.mem bad_node_id_to_cdiff_node the_node.id) then (get_last_bracket_line !the_file the_node.last_line)
                   else the_node.last_line
@@ -358,7 +358,7 @@ let build_action_list fn ht = begin
 
           let to_act =
             let header_flag = (String.get (!the_file) 0)='/' in
-            if (header_flag) then debug "Header touched. Repair cannot be automatically applied!\n";
+            if header_flag then debug "Header touched. Repair cannot be automatically applied!\n";
             match String.lowercase action with
             |  "insert" ->
               if not (line_to_insert<1) && not header_flag then Insert(!the_file, nodeX.cil_txt, line_to_insert, nodeX.cil_txt)
@@ -397,10 +397,10 @@ end
 
 (* Called by lineRangeVisitor to get the line numbers from the original file. *)
 let lineRangeMethod ht id currentLoc = begin
-  let (lr,_) = (Hashtbl.find ht id) in
+  let lr,_ = (Hashtbl.find ht id) in
   let theLines = ref lr in
   let my_line = (* !currentLoc.line *)
-    if ((String.length (currentLoc.file))!=0 && (String.get (currentLoc.file) 0)!='/') then last_good_line := currentLoc.line;
+    if (String.length (currentLoc.file))!=0 && (String.get (currentLoc.file) 0)!='/' then last_good_line := currentLoc.line;
     !last_good_line
   in
   theLines := (my_line :: !theLines);
@@ -435,13 +435,13 @@ let _ =
   (* this adds to verbose_node_info, depending on node_id_to_line_list_fn *)
 
   let build_node_tuple id =
-    if (Hashtbl.mem node_id_to_line_list_fn id) then begin
-      let (lr,f) = (Hashtbl.find node_id_to_line_list_fn id) in
+    if Hashtbl.mem node_id_to_line_list_fn id then begin
+      let lr,f = (Hashtbl.find node_id_to_line_list_fn id) in
       if (List.length lr)!=0 then begin
         let lineRange = ref lr in
         lineRange := (List.sort (fun x y -> x - y) !lineRange);
-        let min = (List.hd !lineRange) in
-        let max = (List.nth !lineRange ((List.length !lineRange)-1)) in
+        let min = List.hd !lineRange in
+        let max = List.nth !lineRange ((List.length !lineRange)-1) in
         Hashtbl.add verbose_node_info id (f,min,max)
       end
       else
@@ -468,7 +468,7 @@ let initialize_node_info nid_to_cil_stmt_ht = begin
   let get_lines_from_file filename startline endline =
     let lines = get_lines filename in
     let max = List.length lines in
-    if (startline<1 || endline>max) then []
+    if startline<1 || endline>max then []
     else
       Array.to_list
         (Array.sub (Array.of_list lines) (startline-1) (endline-startline+1))

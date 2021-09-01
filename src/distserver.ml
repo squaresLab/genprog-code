@@ -69,14 +69,14 @@ let main ()= begin
     for currcomp=0 to (!num_comps-1) do
       debug "Awaiting connection from client %d of %d\n"
         currcomp (!num_comps-1) ;
-      let (sock,address) = accept sock  in
+      let sock,address = accept sock  in
       let addr = match address with
         | ADDR_INET(addr,port) -> (string_of_inet_addr addr)
         | _ -> failwith("Client did not have an inet_addr")
       in
-      let str = (Printf.sprintf "%d" currcomp) in
+      let str = Printf.sprintf "%d" currcomp in
       fullsend sock str;
-      let str = (Printf.sprintf "%d" !num_comps) in
+      let str = Printf.sprintf "%d" !num_comps in
       fullsend sock str;
       Hashtbl.add client_tbl currcomp (sock,addr,0);
       Hashtbl.add info_tbl currcomp (false,0,0,0);
@@ -175,7 +175,7 @@ let main ()= begin
         match list with
         | [] -> ()
         | hd :: tl ->
-          let (sock,_,_) = Hashtbl.find client_tbl last in
+          let sock,_,_ = Hashtbl.find client_tbl last in
           debug "\tinstructing %d to send to %d\n" last hd ;
           fullsend sock (Printf.sprintf "%d" hd);
           sender tl hd

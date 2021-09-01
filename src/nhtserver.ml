@@ -322,7 +322,7 @@ let main () = begin
   let server_socket = socket (PF_INET) (SOCK_STREAM) 0 in
   setsockopt server_socket (SO_REUSEADDR) true ;
   set_nonblock server_socket ;
-  let server_sockaddr = (ADDR_INET(inet_addr_any,!port)) in
+  let server_sockaddr = ADDR_INET(inet_addr_any,!port) in
   bind server_socket server_sockaddr ;
   listen server_socket !listen_max ;
 

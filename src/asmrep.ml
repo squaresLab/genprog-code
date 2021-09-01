@@ -90,7 +90,7 @@ class asmRep = object (self : 'self_type)
           start
           (lfoldl
              (fun lines i ->
-                let found_string = (Str.string_match label_regex (!atoms.(i)) 0) in
+                let found_string = Str.string_match label_regex (!atoms.(i)) 0 in
                 if found_string then
                   (strip (Str.matched_string (!atoms.(i))))::lines
                 else
@@ -158,7 +158,7 @@ class asmRep = object (self : 'self_type)
         match x with
           i::rest ->
           let prefix = (StringTrie.contains_prefix_of (i::rest) trie) in
-          if (prefix == []) then
+          if prefix == [] then
             helper rest
           else
             begin
@@ -196,7 +196,7 @@ class asmRep = object (self : 'self_type)
       match !pending with
       | (i,w)::rest ->
         pending := rest ;
-        if (can_append i) then Some(i,w) else gen ()
+        if can_append i then Some(i,w) else gen ()
       | [] -> None
     in
     gen
@@ -216,7 +216,7 @@ class asmRep = object (self : 'self_type)
       match !pending with
       | (i,w)::rest ->
         pending := rest ;
-        if (can_swap i) then Some(i,w) else gen ()
+        if can_swap i then Some(i,w) else gen ()
       | [] -> None
     in
     gen
