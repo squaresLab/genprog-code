@@ -118,9 +118,7 @@ more.  But if you run into trouble, try that.
 
 3. Docker
 
-   The provided Dockerfile is presently still the OCaml 4.05.0 version; if
-   Claire updates it she will update this README to indicate that the following
-   command should work: 
+   The following command should work: 
    
         docker build -t squareslab/genprog .
 
