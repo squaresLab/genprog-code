@@ -52,6 +52,7 @@ open Printf
 open Global
 open Population
 
+let rep_out = ref "original"
 let representation = ref ""
 let time_at_start = Unix.gettimeofday ()
 let describe_machine = ref false
@@ -81,10 +82,16 @@ let _ =
 
                "--rep", Arg.Set_string representation, "X representation X (c,txt,java)" ;
 
+               "--orig-rep-out", Arg.Set_string rep_out, "X Output filename to which to print initial representation" ;
+
                "--oracle-genome", Arg.Set_string oracle_genome,
                "X genome for oracle search, either string or binary file.";
 
                "--version", Arg.Set show_version, " print the version and exit";
+
+               "--disable-aslr", Arg.Set Rep.disable_aslr,
+               " Disable ASLR during test runtime";
+
              ]
 
 
@@ -97,6 +104,7 @@ let _ =
 let process base ext (rep :('a,'b) Rep.representation) =
   (* load the rep, either from a cache or from source *)
   rep#load base;
+  rep#print_original_src !rep_out;
   rep#debug_info () ;
 
   (* load incoming population, if specified.  We no longer have to do this
